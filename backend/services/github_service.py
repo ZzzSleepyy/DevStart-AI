@@ -195,13 +195,14 @@ def select_batch_files(tree: List[Dict[str, Any]], max_files: int) -> List[str]:
         and 0 < item.get("size", 1) <= settings.MAX_FILE_SIZE_BYTES
     ]
 
-    def score_file(item: Dict[str, Any]) -> Tuple[int, int, str]:
+    def score_file(item: Dict[str, Any]) -> Tuple[int, int, int, int, str]:
         path = item["path"]
         name = path.rsplit("/", 1)[-1].lower()
         depth = path.count("/")
+        is_init = 1 if name == "__init__.py" else 0
         is_priority = 0 if name in PRIORITY_FILENAMES else 1
         is_test = 1 if ("test" in path.lower() or "spec" in path.lower()) else 0
-        return (is_test, is_priority, depth, path)
+        return (is_init, is_test, is_priority, depth, path)
 
     blobs.sort(key=score_file)
     return [item["path"] for item in blobs[:max_files]]

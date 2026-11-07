@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, Header
@@ -63,7 +64,7 @@ def _get_cached_or_fetch_repo(
             return ctx, static_res
 
     try:
-        ctx = fetch_repo_context(owner, repo, max_files=8, token=token)
+        ctx = fetch_repo_context(owner, repo, token=token)
         source_files = ctx.get("source_files", {})
         static_res = run_static_analysis(source_files)
         _REPO_CACHE[key] = (now, ctx, static_res)
@@ -74,9 +75,12 @@ def _get_cached_or_fetch_repo(
 
 
 def _build_recommendations_and_pr_draft(
-    repo_name: str, static_analysis: Optional[Dict[str, Any]]
+    repo_name: str,
+    static_analysis: Optional[Dict[str, Any]],
+    ai_reply: str = "",
+    repo_context: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Build structured recommendations and PR draft from static analysis findings."""
+    """Build structured recommendations and PR draft from static analysis findings and AI insights."""
     findings = (static_analysis or {}).get("findings", [])
     counts = dict(
         (static_analysis or {}).get(
@@ -99,18 +103,45 @@ def _build_recommendations_and_pr_draft(
             }
         )
 
-    affected_files = list(dict.fromkeys(r["file"] for r in recommendations))
+    # Extract files mentioned in backticks in the AI reply, or fall back to scanned repo files
+    ai_files = list(
+        dict.fromkeys(
+            m
+            for m in re.findall(r"`([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]{1,8})`", ai_reply or "")
+            if not m.startswith("http")
+        )
+    )
+    scanned_files = list(((repo_context or {}).get("source_files") or {}).keys())
+    affected_files = list(
+        dict.fromkeys([r["file"] for r in recommendations] + ai_files + scanned_files[:4])
+    )
+
+    # Extract concise sentences from the AI reply if static recommendations are empty
+    ai_sentences = [
+        s.strip()
+        for s in re.split(r"(?<=[.!?])\s+", (ai_reply or "").replace("\n", " "))
+        if 20 < len(s.strip()) < 180
+    ]
+
+    changes = (
+        [f"{r['title']} in {r['file']} (line {r['line']})" for r in recommendations[:5]]
+        or ai_sentences[:4]
+        or [f"Inspected {repo_name} source files ({', '.join(affected_files[:3]) or 'main branch'})"]
+    )
+
     pr_draft = {
         "repo": repo_name,
         "title": f"Harden {repo_name}",
-        "summary": f"Automatic inspection found {len(findings)} improvement opportunity(s) in {repo_name}.",
+        "summary": (
+            f"Automatic inspection found {len(findings)} static issue(s) in {repo_name}."
+            if findings
+            else (ai_sentences[0] if ai_sentences else f"Automatic inspection completed for {repo_name}.")
+        ),
         "why": "Groups the highest-priority security and code quality findings into one reviewable change before they reach production.",
         "scope": f"Targeted fixes across {', '.join(affected_files[:4]) or 'repository source files'}.",
         "vulnerabilities": counts,
-        "changes": [
-            f"{r['title']} in `{r['file']}` (line {r['line']})" for r in recommendations[:5]
-        ]
-        or ["Repository inspection findings were reviewed automatically"],
+        "files": affected_files[:6],
+        "changes": changes,
     }
     return recommendations, pr_draft
 
@@ -154,7 +185,10 @@ def chat_endpoint(
 
     full_name = f"{repo_tuple[0]}/{repo_tuple[1]}" if repo_tuple else "repository"
     recommendations, pr_draft = _build_recommendations_and_pr_draft(
-        full_name, static_analysis
+        full_name,
+        static_analysis,
+        ai_reply=result.get("reply", ""),
+        repo_context=repo_context,
     )
     vulnerabilities = dict(pr_draft["vulnerabilities"])
     ai_vulns = result.get("ai_vulnerabilities")

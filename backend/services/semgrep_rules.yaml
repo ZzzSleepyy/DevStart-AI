@@ -1,0 +1,59 @@
+rules:
+  - id: security.code-execution.eval-exec
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+    message: "Dynamic code execution via eval()/exec() can lead to remote code execution (RCE)."
+    languages: [python, javascript, typescript]
+    severity: ERROR
+
+  - id: security.subprocess.shell-true
+    pattern: subprocess.$FUNC(..., shell=True, ...)
+    message: "Subprocess invoked with shell=True is vulnerable to command injection if user input is included."
+    languages: [python]
+    severity: ERROR
+
+  - id: security.os-system.command-injection
+    patterns:
+      - pattern-either:
+          - pattern: os.system(...)
+          - pattern: os.popen(...)
+    message: "Executing shell commands via os.system()/os.popen() is prone to command injection."
+    languages: [python]
+    severity: ERROR
+
+  - id: security.deserialization.unsafe-load
+    patterns:
+      - pattern-either:
+          - pattern: pickle.load(...)
+          - pattern: pickle.loads(...)
+          - pattern: yaml.load($X)
+    message: "Unsafe deserialization (pickle or yaml.load without SafeLoader) can execute arbitrary code."
+    languages: [python]
+    severity: ERROR
+
+  - id: security.xss.innerhtml
+    patterns:
+      - pattern: $EL.innerHTML = $VAL
+      - pattern-not: $EL.innerHTML = ""
+      - pattern-not: $EL.innerHTML = ''
+    message: "Assigning non-empty values to innerHTML can introduce DOM-based XSS if unescaped input is rendered."
+    languages: [javascript, typescript]
+    severity: WARNING
+
+  - id: security.postmessage.wildcard-origin
+    pattern: $WIN.postMessage($MSG, "*")
+    message: "postMessage called with wildcard targetOrigin ('*') can leak data to untrusted frames."
+    languages: [javascript, typescript]
+    severity: WARNING
+
+  - id: security.crypto.weak-hash
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+    message: "Weak cryptographic hash algorithm (MD5/SHA-1) detected. Use SHA-256 or stronger."
+    languages: [python]
+    severity: WARNING
+

@@ -16,7 +16,7 @@
  */
 
 const API_BASE_DEFAULT = "https://devstart-ai.onrender.com";
-const REQUEST_TIMEOUT = 20000;
+const REQUEST_TIMEOUT = 35000;
 
 const MODES = {
   understand: {
@@ -191,6 +191,7 @@ const els = {
   autoPrFiles: $("autoPrFiles"),
   autoPrIssues: $("autoPrIssues"),
   autoPrWhy: $("autoPrWhy"),
+  autoPrChanges: $("autoPrChanges"),
   autoPrFileList: $("autoPrFileList"),
   cancelPrBtn: $("cancelPrBtn"),
   approvePrBtn: $("approvePrBtn"),
@@ -466,6 +467,35 @@ function renderAnalysis() {
   }
 }
 
+function extractAiInsightsFromHistory() {
+  const aiReplies = (state.history || [])
+    .filter((turn) => turn && turn.role === "assistant" && typeof turn.content === "string")
+    .map((turn) => turn.content);
+  const fullText = aiReplies.join("\n");
+
+  const fileRegex = /`([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]{1,8})`/g;
+  const mentionedFiles = [];
+  let match;
+  while ((match = fileRegex.exec(fullText)) !== null) {
+    const candidate = match[1];
+    if (!mentionedFiles.includes(candidate) && !candidate.startsWith("http")) {
+      mentionedFiles.push(candidate);
+    }
+  }
+
+  const latestReply = aiReplies[aiReplies.length - 1] || aiReplies[0] || "";
+  const sentences = latestReply
+    .replace(/\n+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 20 && s.length < 180);
+
+  return {
+    files: mentionedFiles.slice(0, 6),
+    changes: sentences.slice(0, 4)
+  };
+}
+
 async function requestAnalysis() {
   if (state.busy || !state.repo.fullName) return;
 
@@ -501,6 +531,15 @@ async function requestAnalysis() {
     low: 0
   };
   const backendDraft = state.analysis.prDraft || {};
+  const aiInsights = extractAiInsightsFromHistory();
+  const hasRealBackendChanges =
+    Array.isArray(backendDraft.changes) &&
+    backendDraft.changes.length &&
+    !(
+      backendDraft.changes.length === 1 &&
+      backendDraft.changes[0] === "Repository inspection findings were reviewed automatically"
+    );
+
   const prDraft = {
     repo: state.repo.fullName,
     title: backendDraft.title || `Harden ${state.repo.fullName}`,
@@ -514,13 +553,14 @@ async function requestAnalysis() {
       backendDraft.scope ||
       "Security fixes, validation improvements, and targeted refactors.",
     vulnerabilities: vulns,
-    changes:
-      Array.isArray(backendDraft.changes) && backendDraft.changes.length
-        ? backendDraft.changes
+    files: aiInsights.files,
+    changes: hasRealBackendChanges
+      ? backendDraft.changes
+      : aiInsights.changes.length
+        ? aiInsights.changes
         : [
-            "Repository inspection findings were reviewed automatically",
-            "Highest-priority security risks were grouped for review",
-            "Validation and targeted refactoring opportunities were identified"
+            `Inspected ${state.repo.fullName} source files for security and validation issues`,
+            "Grouped highest-priority findings into a single reviewable pull request"
           ]
   };
   state.analysis.prDraft = prDraft;
@@ -742,6 +782,7 @@ function setView(view) {
     const repo = state.repo.fullName || "this repository";
     const draft = state.analysis.prDraft || {};
     const recs = state.analysis.recommendations || [];
+    const aiInsights = extractAiInsightsFromHistory();
     const counts = state.analysis.vulnerabilities || { critical: 0, high: 0, medium: 0, low: 0 };
     const totalIssues =
       (Number(counts.critical) || 0) +
@@ -755,7 +796,40 @@ function setView(view) {
         draft.summary || `Automatic inspection findings grouped into one reviewable change for ${repo}.`;
     if (els.autoPrWhy && draft.why) els.autoPrWhy.textContent = draft.why;
 
-    const uniqueFiles = Array.from(new Set(recs.map((r) => r.file).filter(Boolean)));
+    if (els.autoPrChanges) {
+      els.autoPrChanges.innerHTML = "";
+      const hasRealDraftChanges =
+        Array.isArray(draft.changes) &&
+        draft.changes.length &&
+        !(
+          draft.changes.length === 1 &&
+          draft.changes[0] === "Repository inspection findings were reviewed automatically"
+        );
+      const changeItems = hasRealDraftChanges
+        ? draft.changes
+        : recs.length
+          ? recs.slice(0, 5).map((r) => `${r.title} in ${r.file} (line ${r.line})`)
+          : aiInsights.changes.length
+            ? aiInsights.changes
+            : [
+                `Inspect ${repo} source files and entry points`,
+                totalIssues > 0
+                  ? `Address ${totalIssues} detected security/validation issue(s) in ${repo}`
+                  : `No critical vulnerabilities found in ${repo}`
+              ];
+
+      changeItems.forEach((changeText) => {
+        const li = document.createElement("li");
+        li.textContent = changeText;
+        els.autoPrChanges.appendChild(li);
+      });
+    }
+
+    const recFiles = recs.map((r) => r.file).filter(Boolean);
+    const draftFiles = Array.isArray(draft.files) ? draft.files : [];
+    const uniqueFiles = Array.from(
+      new Set([...recFiles, ...draftFiles, ...aiInsights.files].filter(Boolean))
+    );
     if (els.autoPrFiles) els.autoPrFiles.textContent = String(uniqueFiles.length || (totalIssues > 0 ? 1 : 0));
     if (els.autoPrIssues) els.autoPrIssues.textContent = String(totalIssues);
 
@@ -764,7 +838,7 @@ function setView(view) {
       const fileEntries = uniqueFiles.length
         ? uniqueFiles.map((file) => ["Modified", file, "file-modified"])
         : [
-            ["Modified", "README.md", "file-modified"]
+            ["Inspected", repo, "file-modified"]
           ];
       fileEntries.forEach(([action, file, className]) => {
         const item = document.createElement("li");
@@ -1146,13 +1220,13 @@ function syncSend() {
 async function checkBackend() {
   setStatus("checking");
   try {
-    const res = await fetchWithTimeout(`${state.apiBase}/health`, {}, 3500);
+    const res = await fetchWithTimeout(`${state.apiBase}/health`, {}, 15000);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     state.usingBackend = true;
   } catch {
     if (state.apiBase !== API_BASE_DEFAULT) {
       try {
-        const fallbackRes = await fetchWithTimeout(`${API_BASE_DEFAULT}/health`, {}, 3500);
+        const fallbackRes = await fetchWithTimeout(`${API_BASE_DEFAULT}/health`, {}, 15000);
         if (fallbackRes.ok) {
           state.apiBase = API_BASE_DEFAULT;
           storageSet("apiBase", API_BASE_DEFAULT);
@@ -1161,7 +1235,7 @@ async function checkBackend() {
           return;
         }
       } catch {
-        /* local fallback also offline */
+        /* fallback also offline */
       }
     }
     state.usingBackend = false;

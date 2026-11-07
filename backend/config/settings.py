@@ -23,7 +23,7 @@ class Settings:
     GITHUB_TIMEOUT: int = int(os.getenv("GITHUB_TIMEOUT", "15"))
 
     # Batching & Safety Limits (per docs: analyze large repos in manageable batches)
-    MAX_FILES_PER_BATCH: int = int(os.getenv("MAX_FILES_PER_BATCH", "8"))
+    MAX_FILES_PER_BATCH: int = int(os.getenv("MAX_FILES_PER_BATCH", "16"))
     MAX_FILE_SIZE_BYTES: int = int(os.getenv("MAX_FILE_SIZE_BYTES", "50000"))
     MAX_TOTAL_CODE_CHARS: int = int(os.getenv("MAX_TOTAL_CODE_CHARS", "60000"))
 

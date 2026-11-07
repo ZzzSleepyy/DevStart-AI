@@ -12,11 +12,13 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
+BUNDLED_RULES_PATH = Path(__file__).resolve().parent / "semgrep_rules.yaml"
+
 # Comprehensive static analysis rule patterns modeled on Semgrep Community rules
 STATIC_RULES: List[Dict[str, Any]] = [
     {
         "id": "security.code-execution.eval-exec",
-        "pattern": re.compile(r"\b(eval|exec)\s*\("),
+        "pattern": re.compile(r"(?<!['\"\w])\b(eval|exec)\s*\((?!\s*\))"),
         "severity": "critical",
         "message": "Dynamic code execution via eval()/exec() can lead to remote code execution (RCE).",
         "suggestion": "Replace eval()/exec() with safe parsing (e.g., json.loads() or ast.literal_eval()).",
@@ -24,7 +26,7 @@ STATIC_RULES: List[Dict[str, Any]] = [
     },
     {
         "id": "security.subprocess.shell-true",
-        "pattern": re.compile(r"subprocess\.(run|Popen|call|check_output)\s*\([^)]*shell\s*=\s*True"),
+        "pattern": re.compile(r"subprocess\.(run|Popen|call|check_output)\s*\(.*shell\s*=\s*True"),
         "severity": "high",
         "message": "Subprocess invoked with shell=True is vulnerable to command injection if user input is included.",
         "suggestion": "Pass command arguments as a list and set shell=False.",
@@ -32,7 +34,7 @@ STATIC_RULES: List[Dict[str, Any]] = [
     },
     {
         "id": "security.os-system.command-injection",
-        "pattern": re.compile(r"\bos\.(system|popen)\s*\("),
+        "pattern": re.compile(r"(?<!['\"\w])\bos\.(system|popen)\s*\((?!\s*\))"),
         "severity": "high",
         "message": "Executing shell commands via os.system()/os.popen() is prone to command injection.",
         "suggestion": "Use subprocess.run([...], shell=False, check=True) instead.",
@@ -48,7 +50,7 @@ STATIC_RULES: List[Dict[str, Any]] = [
     },
     {
         "id": "security.xss.innerhtml",
-        "pattern": re.compile(r"(\.innerHTML\s*=|dangerouslySetInnerHTML)"),
+        "pattern": re.compile(r"(\.innerHTML\s*=(?![\s]*['\"]\s*['\"]\s*(?:;|$))|dangerouslySetInnerHTML)"),
         "severity": "medium",
         "message": "Direct HTML injection via innerHTML or dangerouslySetInnerHTML can introduce DOM-based XSS if unescaped input is rendered.",
         "suggestion": "Use textContent, createElement(), or sanitize HTML before rendering.",
@@ -77,7 +79,7 @@ STATIC_RULES: List[Dict[str, Any]] = [
         "pattern": re.compile(r"allow_origins\s*=\s*\[\s*['\"]\*['\"]\s*\]"),
         "severity": "medium",
         "message": "Wildcard CORS origin ('*') allows any website to make cross-origin requests to the API.",
-        "suggestion": "Restrict allow_origins to trusted frontend/extension origins in production.",
+        "suggestion": "Restrict allow_origins or set allow_credentials=False when using '*'.",
         "languages": {".py", ".js", ".ts"},
     },
     {
@@ -98,7 +100,7 @@ STATIC_RULES: List[Dict[str, Any]] = [
     },
     {
         "id": "security.http.missing-timeout",
-        "pattern": re.compile(r"\brequests\.(get|post|put|delete|patch)\s*\((?![^)]*timeout\s*=)[^)]+\)"),
+        "pattern": re.compile(r"\brequests\.(get|post|put|delete|patch)\s*\((?!.*timeout\s*=).+\)"),
         "severity": "medium",
         "message": "HTTP request via requests library without an explicit timeout can hang indefinitely.",
         "suggestion": "Add a timeout parameter (e.g., timeout=10) to all requests calls.",
@@ -106,7 +108,7 @@ STATIC_RULES: List[Dict[str, Any]] = [
     },
     {
         "id": "bug.division-by-zero",
-        "pattern": re.compile(r"[/]\s*0(?![.0-9])"),
+        "pattern": re.compile(r"(?<![:/])\s*/\s*0(?![.0-9xX])"),
         "severity": "high",
         "message": "Potential division by zero detected, which will raise a runtime exception.",
         "suggestion": "Validate that the divisor is non-zero before dividing.",
@@ -122,19 +124,11 @@ STATIC_RULES: List[Dict[str, Any]] = [
     },
     {
         "id": "quality.todo-fixme-marker",
-        "pattern": re.compile(r"(?i)(#|//|/\*)\s*(TODO|FIXME|BUG|HACK|XXX)\b"),
+        "pattern": re.compile(r"^\s*(#|//|/\*)\s*(TODO|FIXME|BUG|HACK|XXX)\b"),
         "severity": "low",
         "message": "Unresolved TODO/FIXME/BUG marker indicates incomplete or known-fragile logic.",
         "suggestion": "Resolve the unfinished logic or track it as an issue before release.",
         "languages": {".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rs", ".c", ".cpp"},
-    },
-    {
-        "id": "quality.stub.not-implemented",
-        "pattern": re.compile(r"(?i)(not implemented|raise NotImplementedError|to be added soon)"),
-        "severity": "medium",
-        "message": "Unimplemented stub or placeholder logic detected in source file.",
-        "suggestion": "Complete the implementation or remove dead stub endpoints.",
-        "languages": {".py", ".js", ".ts", ".jsx", ".tsx", ".html"},
     },
     {
         "id": "security.postmessage.wildcard-origin",
@@ -160,7 +154,6 @@ SEMGREP_SEVERITY_MAP = {
 def _find_semgrep_binary() -> str | None:
     """Locate the semgrep executable in venv or PATH (skipped on Windows unless SEMGREP_CLI_ENABLED=1)."""
     if sys.platform == "win32" and os.getenv("SEMGREP_CLI_ENABLED", "").lower() not in ("1", "true", "yes"):
-        # Semgrep's native OCaml engine requires POSIX/WSL on Windows; skip slow CLI subprocess spin-up by default on win32
         return None
 
     venv_scripts = Path(sys.executable).parent
@@ -175,9 +168,9 @@ def _find_semgrep_binary() -> str | None:
 
 
 def _run_semgrep_cli(files: Dict[str, str]) -> List[Dict[str, Any]]:
-    """Run Semgrep CLI on a temporary directory of files if the binary is supported and available."""
+    """Run Semgrep CLI using bundled Semgrep YAML rules so it executes fast offline on Linux/Render."""
     semgrep_bin = _find_semgrep_binary()
-    if not semgrep_bin or not files:
+    if not semgrep_bin or not files or not BUNDLED_RULES_PATH.exists():
         return []
 
     findings: List[Dict[str, Any]] = []
@@ -193,7 +186,8 @@ def _run_semgrep_cli(files: Dict[str, str]) -> List[Dict[str, Any]]:
             cmd = [
                 semgrep_bin,
                 "scan",
-                "--config=auto",
+                f"--config={BUNDLED_RULES_PATH}",
+                "--metrics=off",
                 "--json",
                 "--quiet",
                 "--timeout=5",
@@ -203,7 +197,7 @@ def _run_semgrep_cli(files: Dict[str, str]) -> List[Dict[str, Any]]:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=8,
+                timeout=10,
                 env={**os.environ, "SEMGREP_SEND_METRICS": "off"},
             )
             if proc.stdout:
@@ -217,11 +211,15 @@ def _run_semgrep_cli(files: Dict[str, str]) -> List[Dict[str, Any]]:
 
                     extra = res.get("extra", {})
                     raw_sev = str(extra.get("severity", "WARNING")).upper()
-                    severity = SEMGREP_SEVERITY_MAP.get(raw_sev, "medium")
+                    check_id = res.get("check_id", "semgrep.finding")
+                    if "eval-exec" in check_id or "unsafe-load" in check_id:
+                        severity = "critical"
+                    else:
+                        severity = SEMGREP_SEVERITY_MAP.get(raw_sev, "medium")
 
                     findings.append(
                         {
-                            "rule_id": res.get("check_id", "semgrep.finding"),
+                            "rule_id": check_id,
                             "file": rel,
                             "line": res.get("start", {}).get("line", 1),
                             "end_line": res.get("end", {}).get("line", 1),
@@ -239,11 +237,15 @@ def _run_semgrep_cli(files: Dict[str, str]) -> List[Dict[str, Any]]:
 
 
 def _run_builtin_static_rules(files: Dict[str, str]) -> List[Dict[str, Any]]:
-    """Run built-in static pattern checks and syntax validation across files."""
+    """Run built-in static pattern checks and AST validation across files."""
     findings: List[Dict[str, Any]] = []
     for file_path, content in files.items():
         if not content:
             continue
+        # Skip scanning the rule definition file itself to avoid self-matching rule strings
+        if file_path.endswith("semgrep_service.py"):
+            continue
+
         ext = Path(file_path).suffix.lower() or ".py"
         lines = content.splitlines()
 
@@ -268,8 +270,17 @@ def _run_builtin_static_rules(files: Dict[str, str]) -> List[Dict[str, Any]]:
                 )
 
         for line_idx, line in enumerate(lines, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+
             for rule in STATIC_RULES:
                 if ext not in rule["languages"]:
+                    continue
+                # Skip comment lines except for the TODO/FIXME rule
+                if rule["id"] != "quality.todo-fixme-marker" and (
+                    stripped.startswith("#") or stripped.startswith("//") or stripped.startswith("*")
+                ):
                     continue
                 if rule["pattern"].search(line):
                     findings.append(
@@ -280,7 +291,7 @@ def _run_builtin_static_rules(files: Dict[str, str]) -> List[Dict[str, Any]]:
                             "end_line": line_idx,
                             "severity": rule["severity"],
                             "message": rule["message"],
-                            "code_snippet": line.strip()[:200],
+                            "code_snippet": stripped[:200],
                             "suggestion": rule["suggestion"],
                             "source": "semgrep-static",
                         }
@@ -296,11 +307,12 @@ def run_static_analysis(files: Dict[str, str]) -> Dict[str, Any]:
     cli_findings = _run_semgrep_cli(files)
     builtin_findings = _run_builtin_static_rules(files)
 
-    # Deduplicate by (file, line, rule_id)
+    # Deduplicate by (file, line, rule_id suffix)
     seen = set()
     merged: List[Dict[str, Any]] = []
     for item in cli_findings + builtin_findings:
-        key = (item["file"], item["line"], item["rule_id"])
+        short_rule = item["rule_id"].split(".")[-1]
+        key = (item["file"], item["line"], short_rule)
         if key not in seen:
             seen.add(key)
             merged.append(item)

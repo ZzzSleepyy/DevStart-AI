@@ -7,6 +7,8 @@
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*",
+    "https://devstart-ai.onrender.com/*",
+    "https://*.onrender.com/*",
     "https://*.trycloudflare.com/*",
     "https://github.com/*",
     "https://api.github.com/*"

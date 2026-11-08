@@ -1665,6 +1665,12 @@ body::after {
   min-width: 0;
 }
 
+@property --analysis-progress {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .analysis-ring {
   --analysis-progress: 0deg;
   position: relative;
@@ -1679,6 +1685,29 @@ body::after {
   border-radius: 50%;
   background: conic-gradient(var(--cyan), var(--blue) var(--analysis-progress), rgba(124, 172, 255, 0.12) 0);
   box-shadow: 0 0 28px rgba(40, 170, 255, 0.36), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.analysis-ring.is-running {
+  animation: ring-sweep 1.8s linear infinite, ring-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes ring-sweep {
+  from {
+    --analysis-progress: 0deg;
+  }
+  to {
+    --analysis-progress: 360deg;
+  }
+}
+
+@keyframes ring-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 28px rgba(40, 170, 255, 0.36), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+  50% {
+    box-shadow: 0 0 44px rgba(60, 190, 255, 0.62), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  }
 }
 
 .analysis-ring::after {
@@ -1701,6 +1730,24 @@ body::after {
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1;
+}
+
+.analysis-ring-value.is-analyzing {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: #cfeeff;
+  animation: analyzing-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes analyzing-pulse {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .analysis-ring-label {
@@ -1847,6 +1894,55 @@ body::after {
   color: var(--dim);
   font-size: 12px;
   text-align: right;
+}
+
+.review-findings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 0 16px;
+  border: 1px solid rgba(34, 211, 238, 0.42);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 180% at 0% 0%, rgba(64, 140, 255, 0.34), transparent 62%),
+    linear-gradient(120deg, rgba(14, 88, 150, 0.92), rgba(46, 74, 200, 0.92));
+  color: #eaf6ff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 10px 28px rgba(20, 80, 200, 0.32);
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease), border-color 160ms var(--ease);
+}
+
+.review-findings-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(34, 211, 238, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 14px 34px rgba(20, 100, 220, 0.42),
+    0 0 24px rgba(34, 211, 238, 0.18);
+}
+
+.review-findings-btn:active {
+  transform: translateY(0);
+}
+
+.review-findings-arrow {
+  font-size: 15px;
+  line-height: 1;
+  transition: transform 160ms var(--ease);
+}
+
+.review-findings-btn:hover .review-findings-arrow {
+  transform: translateX(3px);
 }
 
 /* The top-bar grid button already toggles back to chat, so the big page title is dropped */
@@ -2211,6 +2307,12 @@ button.dash-row:hover {
   .analysis-actions .ghost-btn {
     min-height: 42px;
     padding: 0 14px;
+    font-size: 13px;
+  }
+
+  .review-findings-btn {
+    min-height: 42px;
+    margin-top: 10px;
     font-size: 13px;
   }
 }

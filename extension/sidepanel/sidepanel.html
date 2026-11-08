@@ -206,7 +206,7 @@
             <div class="analysis-progress">
               <div class="analysis-ring" id="analysisRing" role="img" aria-label="Analysis has not started">
                 <span class="analysis-ring-value" id="analysisProgress">0%</span>
-                <span class="analysis-ring-label">analyzed</span>
+                <span class="analysis-ring-label" id="analysisRingLabel">analyzed</span>
               </div>
               <div class="analysis-progress-copy">
                 <strong id="analysisFiles">No scan run</strong>
@@ -243,6 +243,10 @@
             <button class="ghost-btn" id="dashNewChatBtn" type="button">New chat</button>
             <span class="analysis-note" id="analysisNote">Findings appear after an inspection.</span>
           </div>
+          <button class="review-findings-btn" id="reviewFindingsBtn" type="button" hidden>
+            <span>Review findings in chat</span>
+            <span class="review-findings-arrow" aria-hidden="true">→</span>
+          </button>
         </div>
 
       </section>

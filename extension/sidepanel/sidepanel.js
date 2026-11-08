@@ -213,6 +213,8 @@ const els = {
   dashAnalysisStatus: $("dashAnalysisStatus"),
   analysisRing: $("analysisRing"),
   analysisProgress: $("analysisProgress"),
+  analysisRingLabel: $("analysisRingLabel"),
+  analysisNote: $("analysisNote"),
   analysisFiles: $("analysisFiles"),
   analysisLastScan: $("analysisLastScan"),
   vulnerabilityTotal: $("vulnerabilityTotal"),
@@ -221,6 +223,7 @@ const els = {
   mediumCount: $("mediumCount"),
   lowCount: $("lowCount"),
   runAnalysisBtn: $("runAnalysisBtn"),
+  reviewFindingsBtn: $("reviewFindingsBtn"),
   thread: $("thread"),
   prompts: $("prompts"),
   composer: $("composer"),
@@ -450,9 +453,17 @@ function renderAnalysis() {
       : "Ready to scan";
 
   if (els.dashAnalysisStatus) els.dashAnalysisStatus.textContent = status;
-  if (els.analysisProgress) els.analysisProgress.textContent = `${progress}%`;
+  if (els.analysisProgress) {
+    els.analysisProgress.textContent = isRunning ? "Analyzing" : `${progress}%`;
+    els.analysisProgress.classList.toggle("is-analyzing", isRunning);
+  }
+  if (els.analysisRingLabel) els.analysisRingLabel.hidden = isRunning;
   if (els.analysisRing) {
-    els.analysisRing.style.setProperty("--analysis-progress", `${progress * 3.6}deg`);
+    els.analysisRing.style.setProperty(
+      "--analysis-progress",
+      `${isRunning ? 270 : progress * 3.6}deg`
+    );
+    els.analysisRing.classList.toggle("is-running", isRunning);
     els.analysisRing.setAttribute(
       "aria-label",
       isRunning
@@ -486,6 +497,14 @@ function renderAnalysis() {
           ? `Code health score: ${healthScore}% — review findings in Chat or Auto Pull Request.`
           : "Code health score: 100% — no vulnerabilities detected."
         : "Start an inspection when you are ready.";
+  }
+
+  if (els.reviewFindingsBtn) els.reviewFindingsBtn.hidden = !isComplete;
+  if (els.analysisNote) {
+    els.analysisNote.hidden = isComplete;
+    els.analysisNote.textContent = isRunning
+      ? "Scanning files and tracing risky paths…"
+      : "Findings appear after an inspection.";
   }
 }
 
@@ -599,6 +618,26 @@ async function requestAnalysis() {
   storageSet(`scanComplete:${state.repo.fullName}`, true);
   postToParent("ANALYSIS_FINISHED");
   postToParent("PR_DRAFT_READY", prDraft);
+
+  // Keep the follow-up action in view instead of leaving it below the fold.
+  if (state.view === "dashboard" && els.reviewFindingsBtn && els.dashboardPage) {
+    requestAnimationFrame(() => {
+      const page = els.dashboardPage;
+      const nav = document.querySelector(".bottom-nav");
+      const navClearance = (nav ? nav.getBoundingClientRect().height : 68) + 28;
+      const pageRect = page.getBoundingClientRect();
+      const btnRect = els.reviewFindingsBtn.getBoundingClientRect();
+      const overlap = btnRect.bottom - (pageRect.bottom - navClearance);
+      if (overlap > 0) {
+        page.scrollBy({
+          top: overlap + 16,
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth"
+        });
+      }
+    });
+  }
 }
 
 function renderDashStageList(activeIndex = MODE_ORDER.indexOf(state.mode)) {
@@ -732,7 +771,26 @@ function resetAnalysisForRepo() {
   storageGet(`scanComplete:${repoName}`, false).then((done) => {
     if (state.repo.fullName !== repoName) return;
     state.analysis.hasScanned = !!done;
-    renderAnalysis();
+    if (!done) {
+      renderAnalysis();
+      return;
+    }
+
+    // Restore the last result so the score and follow-up action stay coherent
+    // with the "Run analysis again" label after a reload.
+    storageGet(`prDraft:${repoName}`, null).then((draft) => {
+      if (state.repo.fullName !== repoName || !draft) {
+        renderAnalysis();
+        return;
+      }
+      state.analysis.status = "complete";
+      state.analysis.phase = "pr";
+      state.analysis.prDraft = draft;
+      if (draft.vulnerabilities) {
+        state.analysis.vulnerabilities = draft.vulnerabilities;
+      }
+      renderProgress();
+    });
   });
 }
 
@@ -1642,6 +1700,30 @@ els.approvePrBtn?.addEventListener("click", () => {
 });
 
 els.runAnalysisBtn?.addEventListener("click", requestAnalysis);
+
+els.reviewFindingsBtn?.addEventListener("click", () => {
+  const repo = state.repo.fullName;
+  if (!repo) return;
+
+  const counts = state.analysis.vulnerabilities || {};
+  const total = ["critical", "high", "medium", "low"].reduce(
+    (sum, key) => sum + (Number(counts[key]) || 0),
+    0
+  );
+  const breakdown = ["critical", "high", "medium", "low"]
+    .filter((key) => Number(counts[key]) > 0)
+    .map((key) => `${counts[key]} ${key}`)
+    .join(", ");
+
+  const prompt = total
+    ? `Review the ${total} vulnerabilit${total === 1 ? "y" : "ies"} found in ${repo}${
+        breakdown ? ` (${breakdown})` : ""
+      } and explain how to fix the most important ones.`
+    : `Review the scan of ${repo}, which found no vulnerabilities, and confirm there is nothing to fix.`;
+
+  setView("chat");
+  sendMessage(prompt);
+});
 
 
 

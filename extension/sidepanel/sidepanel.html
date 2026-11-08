@@ -10,10 +10,35 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <span class="brand-mark" id="brandMark" data-state="idle" aria-hidden="true"></span>
+        <span class="brand-mark" id="brandMark" data-state="idle" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none">
+            <defs>
+              <linearGradient id="dsLogoBowl" x1="15" y1="5" x2="34" y2="35" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#8b6cf6" />
+                <stop offset="0.45" stop-color="#3b82f6" />
+                <stop offset="1" stop-color="#22d3ee" />
+              </linearGradient>
+              <linearGradient id="dsLogoStem" x1="10" y1="3" x2="15" y2="38" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#e2ebf9" />
+                <stop offset="0.5" stop-color="#9cc2ff" />
+                <stop offset="1" stop-color="#4f8df7" />
+              </linearGradient>
+            </defs>
+            <path
+              fill-rule="evenodd"
+              clip-rule="evenodd"
+              fill="url(#dsLogoBowl)"
+              d="M17.2 2.5C12.4 9.2 9.2 16 9 22.5c-.2 6.5 2.2 11.9 7.2 15.1 5.8.2 11.4-2.4 14.6-7.1 2.8-4 3.8-7.5 3.8-10.7 0-6.2-3.6-11.8-9.6-14.6-2.6-1.2-5.2-1.8-7.8-2.7ZM14 9.5c3.8.7 7.4 1.3 10.2 2.2 4 1.4 5.6 4.5 5.6 8.3s-1.6 6.9-5.6 8.3c-2.8.9-6.4 1.5-10.2 2.2-1.4-1.5-2-3.7-2-5.8v-9c0-2.3.6-4.5 2-6.2Z"
+            />
+            <path
+              fill="url(#dsLogoStem)"
+              d="M17.2 2.5C12.4 9.2 9.2 16 9 22.5c-.2 6.5 2.2 11.9 7.2 15.1-2.5-3.8-3.3-7.6-2.8-12 .5-5.4 2-15.6 3.8-23.1Z"
+            />
+          </svg>
+        </span>
         <span class="brand-copy">
           <span class="brand-name">DevStart AI</span>
-          <span class="brand-sub">Repository intelligence</span>
+          <span class="brand-sub">Repository Intelligence</span>
         </span>
       </div>
       <div class="topbar-actions">
@@ -161,7 +186,7 @@
           </div>
         </div>
 
-        <div class="dash-card">
+        <div class="dash-card process-card">
           <div class="dash-card-head">
             <span>AI process</span>
             <span id="dashStage">Map · step 1 of 5</span>
@@ -181,7 +206,7 @@
             <div class="analysis-progress">
               <div class="analysis-ring" id="analysisRing" role="img" aria-label="Analysis has not started">
                 <span class="analysis-ring-value" id="analysisProgress">0%</span>
-                <span class="analysis-ring-label">analyzed</span>
+                <span class="analysis-ring-label" id="analysisRingLabel">analyzed</span>
               </div>
               <div class="analysis-progress-copy">
                 <strong id="analysisFiles">No scan run</strong>
@@ -214,10 +239,14 @@
             </div>
           </div>
           <div class="analysis-actions">
-            <button class="primary-btn" id="runAnalysisBtn" type="button">Run analysis again</button>
+            <button class="primary-btn" id="runAnalysisBtn" type="button">Run analysis</button>
             <button class="ghost-btn" id="dashNewChatBtn" type="button">New chat</button>
             <span class="analysis-note" id="analysisNote">Findings appear after an inspection.</span>
           </div>
+          <button class="review-findings-btn" id="reviewFindingsBtn" type="button" hidden>
+            <span>Review findings in chat</span>
+            <span class="review-findings-arrow" aria-hidden="true">→</span>
+          </button>
         </div>
 
       </section>
@@ -296,10 +325,18 @@
 
     <nav class="bottom-nav" aria-label="DevStart AI navigation">
       <button class="bottom-nav-btn is-active" id="bottomDashboardBtn" type="button" aria-pressed="true">
-        <span aria-hidden="true">▦</span><span>Dashboard</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="6" height="7" rx="1" /><rect x="14" y="4" width="6" height="4" rx="1" />
+          <rect x="14" y="12" width="6" height="8" rx="1" /><rect x="4" y="15" width="6" height="5" rx="1" />
+        </svg>
+        <span>Dashboard</span>
       </button>
       <button class="bottom-nav-btn" id="bottomPrBtn" type="button" aria-pressed="false">
-        <span aria-hidden="true">⑂</span><span>Auto Pull Request</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><path d="M6 8.5v7" />
+          <circle cx="18" cy="18" r="2.5" /><path d="M18 15.5V9a3 3 0 0 0-3-3h-2" /><path d="m15 3-2 3 2 3" />
+        </svg>
+        <span>Auto Pull Request</span>
       </button>
     </nav>
   </div>

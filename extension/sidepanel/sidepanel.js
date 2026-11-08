@@ -151,6 +151,7 @@ const state = {
     status: "idle",
     repoName: "",
     phase: "understand",
+    hasScanned: false,
     vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0 },
     prDraft: null,
     recommendations: []
@@ -212,6 +213,8 @@ const els = {
   dashAnalysisStatus: $("dashAnalysisStatus"),
   analysisRing: $("analysisRing"),
   analysisProgress: $("analysisProgress"),
+  analysisRingLabel: $("analysisRingLabel"),
+  analysisNote: $("analysisNote"),
   analysisFiles: $("analysisFiles"),
   analysisLastScan: $("analysisLastScan"),
   vulnerabilityTotal: $("vulnerabilityTotal"),
@@ -220,6 +223,7 @@ const els = {
   mediumCount: $("mediumCount"),
   lowCount: $("lowCount"),
   runAnalysisBtn: $("runAnalysisBtn"),
+  reviewFindingsBtn: $("reviewFindingsBtn"),
   thread: $("thread"),
   prompts: $("prompts"),
   composer: $("composer"),
@@ -265,6 +269,8 @@ if (state.embedded) {
     if (data.type === "REPO_CONTEXT" && data.repo) {
       setRepoContext(data.repo);
       restoreCachedRepoContext(data.repo);
+    } else if (data.type === "SHOW_CHAT") {
+      setView("chat");
     }
   });
 }
@@ -400,14 +406,33 @@ function getProcessMode() {
   return analysisIsActive ? state.analysis.phase : state.mode;
 }
 
+let scanToastTimer = null;
+
+function hideScanCompleteToast() {
+  if (scanToastTimer) {
+    clearTimeout(scanToastTimer);
+    scanToastTimer = null;
+  }
+  if (els.scanCompleteToast) els.scanCompleteToast.hidden = true;
+}
+
 function showScanCompleteToast() {
   if (!els.scanCompleteToast) return;
   els.scanCompleteToast.hidden = false;
+
+  // Never leave the confirmation pinned to the screen.
+  if (scanToastTimer) clearTimeout(scanToastTimer);
+  scanToastTimer = setTimeout(hideScanCompleteToast, 5000);
 }
 
 function renderAnalysis() {
   const isRunning = state.analysis.status === "running";
   const isComplete = state.analysis.status === "complete";
+  const hasRunBefore = isComplete || state.analysis.hasScanned;
+  if (els.runAnalysisBtn) {
+    els.runAnalysisBtn.textContent = hasRunBefore ? "Run analysis again" : "Run analysis";
+  }
+  if (els.stageRail) els.stageRail.classList.toggle("is-running", isRunning);
   const counts = state.analysis.vulnerabilities || { critical: 0, high: 0, medium: 0, low: 0 };
   const cCrit = Number(counts.critical) || 0;
   const cHigh = Number(counts.high) || 0;
@@ -428,9 +453,17 @@ function renderAnalysis() {
       : "Ready to scan";
 
   if (els.dashAnalysisStatus) els.dashAnalysisStatus.textContent = status;
-  if (els.analysisProgress) els.analysisProgress.textContent = `${progress}%`;
+  if (els.analysisProgress) {
+    els.analysisProgress.textContent = isRunning ? "Analyzing" : `${progress}%`;
+    els.analysisProgress.classList.toggle("is-analyzing", isRunning);
+  }
+  if (els.analysisRingLabel) els.analysisRingLabel.hidden = isRunning;
   if (els.analysisRing) {
-    els.analysisRing.style.setProperty("--analysis-progress", `${progress * 3.6}deg`);
+    els.analysisRing.style.setProperty(
+      "--analysis-progress",
+      `${isRunning ? 270 : progress * 3.6}deg`
+    );
+    els.analysisRing.classList.toggle("is-running", isRunning);
     els.analysisRing.setAttribute(
       "aria-label",
       isRunning
@@ -463,7 +496,15 @@ function renderAnalysis() {
         ? totalIssues > 0
           ? `Code health score: ${healthScore}% — review findings in Chat or Auto Pull Request.`
           : "Code health score: 100% — no vulnerabilities detected."
-        : "Analysis starts automatically when a repository is detected.";
+        : "Start an inspection when you are ready.";
+  }
+
+  if (els.reviewFindingsBtn) els.reviewFindingsBtn.hidden = !isComplete;
+  if (els.analysisNote) {
+    els.analysisNote.hidden = isComplete;
+    els.analysisNote.textContent = isRunning
+      ? "Scanning files and tracing risky paths…"
+      : "Findings appear after an inspection.";
   }
 }
 
@@ -498,6 +539,10 @@ function extractAiInsightsFromHistory() {
 
 async function requestAnalysis() {
   if (state.busy || !state.repo.fullName) return;
+
+  hideScanCompleteToast();
+  setPrBusy(true);
+  postToParent("ANALYSIS_STARTED");
 
   if (!state.usingBackend) {
     await checkBackend();
@@ -564,18 +609,47 @@ async function requestAnalysis() {
           ]
   };
   state.analysis.prDraft = prDraft;
+  state.analysis.hasScanned = true;
   renderProgress();
+  setPrBusy(false);
+  if (state.view === "pr") setView("pr");
   showScanCompleteToast();
   storageSet(`prDraft:${state.repo.fullName}`, prDraft);
   storageSet(`scanComplete:${state.repo.fullName}`, true);
+  postToParent("ANALYSIS_FINISHED");
   postToParent("PR_DRAFT_READY", prDraft);
+
+  // Keep the follow-up action in view instead of leaving it below the fold.
+  if (state.view === "dashboard" && els.reviewFindingsBtn && els.dashboardPage) {
+    requestAnimationFrame(() => {
+      const page = els.dashboardPage;
+      const nav = document.querySelector(".bottom-nav");
+      const navClearance = (nav ? nav.getBoundingClientRect().height : 68) + 28;
+      const pageRect = page.getBoundingClientRect();
+      const btnRect = els.reviewFindingsBtn.getBoundingClientRect();
+      const overlap = btnRect.bottom - (pageRect.bottom - navClearance);
+      if (overlap > 0) {
+        page.scrollBy({
+          top: overlap + 16,
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth"
+        });
+      }
+    });
+  }
 }
 
 function renderDashStageList(activeIndex = MODE_ORDER.indexOf(state.mode)) {
   if (!els.dashStageList) return;
   els.dashStageList.innerHTML = "";
 
+  // Show the stage that just finished and the one in progress. At the very
+  // start there is nothing finished yet, so show the current and the next stage.
+  const firstShown = Math.max(0, Math.min(activeIndex - 1, MODE_ORDER.length - 2));
+
   MODE_ORDER.forEach((mode, index) => {
+    if (index < firstShown || index > firstShown + 1) return;
     const row = document.createElement("div");
     row.className = "dash-stage";
     row.dataset.state = index === activeIndex ? "active" : index < activeIndex ? "done" : "idle";
@@ -595,6 +669,13 @@ function renderDashStageList(activeIndex = MODE_ORDER.indexOf(state.mode)) {
 
     row.append(dot, name, meta);
     els.dashStageList.appendChild(row);
+  });
+}
+
+// A failed avatar load should fall back to the gradient tile, not a broken-image glyph
+if (els.dashRepoImage) {
+  els.dashRepoImage.addEventListener("error", () => {
+    els.dashRepoImage.hidden = true;
   });
 }
 
@@ -673,6 +754,56 @@ async function enrichRepoFromApi(fullName) {
   }
 }
 
+function resetAnalysisForRepo() {
+  state.analysis.status = "idle";
+  state.analysis.phase = "understand";
+  state.analysis.hasScanned = false;
+  state.analysis.vulnerabilities = { critical: 0, high: 0, medium: 0, low: 0 };
+  state.analysis.prDraft = null;
+  state.analysis.recommendations = [];
+  hideScanCompleteToast();
+  renderProgress();
+  renderAnalysis();
+
+  // Remember whether this repository has been scanned in an earlier session.
+  const repoName = state.repo.fullName;
+  if (!repoName) return;
+  storageGet(`scanComplete:${repoName}`, false).then((done) => {
+    if (state.repo.fullName !== repoName) return;
+    state.analysis.hasScanned = !!done;
+    if (!done) {
+      renderAnalysis();
+      return;
+    }
+
+    // Restore the last result so the score and follow-up action stay coherent
+    // with the "Run analysis again" label after a reload.
+    storageGet(`prDraft:${repoName}`, null).then((draft) => {
+      if (state.repo.fullName !== repoName || !draft) {
+        renderAnalysis();
+        return;
+      }
+      state.analysis.status = "complete";
+      state.analysis.phase = "pr";
+      state.analysis.prDraft = draft;
+      if (draft.vulnerabilities) {
+        state.analysis.vulnerabilities = draft.vulnerabilities;
+      }
+      renderProgress();
+    });
+  });
+}
+
+function setPrBusy(isBusy) {
+  if (els.prStatus) {
+    els.prStatus.textContent = isBusy ? "Analyzing repository…" : "Ready for review";
+  }
+  if (els.approvePrBtn) {
+    els.approvePrBtn.disabled = isBusy;
+    els.approvePrBtn.textContent = isBusy ? "Analysis in progress…" : "Approve pull request";
+  }
+}
+
 function setRepoContext(repo = {}) {
   const sameRepo = !repo.fullName || !state.repo.fullName || repo.fullName === state.repo.fullName;
   const nextRepo = { ...state.repo };
@@ -688,7 +819,9 @@ function setRepoContext(repo = {}) {
 
   if (state.repo.fullName && state.analysis.repoName !== state.repo.fullName) {
     state.analysis.repoName = state.repo.fullName;
-    requestAnalysis();
+    // Do not start the scan on detection. The user asks for it from the
+    // Auto Pull Request page or the dashboard button.
+    resetAnalysisForRepo();
   }
 
   const missingStats = ["stars", "forks", "issues"].some((key) =>
@@ -754,6 +887,8 @@ function setView(view) {
   if (els.dashboardPage) els.dashboardPage.hidden = !isDashboard;
   if (els.prPage) els.prPage.hidden = !isPr;
   if (els.composerArea) els.composerArea.hidden = isDashboard || isPr;
+  // The composer is hidden on the dashboard, so its height reads as 0 there; re-measure once it is visible
+  if (!isDashboard && !isPr) autoResize();
 
   if (els.dashboardBtn) {
     els.dashboardBtn.classList.toggle("is-active", isDashboard);
@@ -1548,7 +1683,11 @@ els.dashNewChatBtn?.addEventListener("click", () => {
 });
 
 els.bottomDashboardBtn?.addEventListener("click", () => setView("dashboard"));
-els.bottomPrBtn?.addEventListener("click", () => setView("pr"));
+els.bottomPrBtn?.addEventListener("click", () => {
+  setView("pr");
+  // The scan starts only after the user opens Auto Pull Request.
+  if (state.analysis.status === "idle") requestAnalysis();
+});
 els.cancelPrBtn?.addEventListener("click", () => {
   if (els.prStatus) els.prStatus.textContent = "Cancelled";
 });
@@ -1562,6 +1701,30 @@ els.approvePrBtn?.addEventListener("click", () => {
 
 els.runAnalysisBtn?.addEventListener("click", requestAnalysis);
 
+els.reviewFindingsBtn?.addEventListener("click", () => {
+  const repo = state.repo.fullName;
+  if (!repo) return;
+
+  const counts = state.analysis.vulnerabilities || {};
+  const total = ["critical", "high", "medium", "low"].reduce(
+    (sum, key) => sum + (Number(counts[key]) || 0),
+    0
+  );
+  const breakdown = ["critical", "high", "medium", "low"]
+    .filter((key) => Number(counts[key]) > 0)
+    .map((key) => `${counts[key]} ${key}`)
+    .join(", ");
+
+  const prompt = total
+    ? `Review the ${total} vulnerabilit${total === 1 ? "y" : "ies"} found in ${repo}${
+        breakdown ? ` (${breakdown})` : ""
+      } and explain how to fix the most important ones.`
+    : `Review the scan of ${repo}, which found no vulnerabilities, and confirm there is nothing to fix.`;
+
+  setView("chat");
+  sendMessage(prompt);
+});
+
 
 
 els.minimizeBtn?.addEventListener("click", () => postToParent("MINIMIZE"));
@@ -1571,9 +1734,7 @@ els.settingsDialog.addEventListener("click", (event) => {
   if (event.target === els.settingsDialog) closeSettings();
 });
 
-els.dismissScanToast?.addEventListener("click", () => {
-  if (els.scanCompleteToast) els.scanCompleteToast.hidden = true;
-});
+els.dismissScanToast?.addEventListener("click", hideScanCompleteToast);
 
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -1598,7 +1759,7 @@ async function init() {
   setMode(state.mode, { silent: true });
   renderEmpty();
   renderDashboard();
-  setView("dashboard");
+  setView(state.embedded ? "chat" : "dashboard");
   syncSend();
   autoResize();
   await checkBackend();

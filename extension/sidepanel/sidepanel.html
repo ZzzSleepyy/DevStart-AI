@@ -10,10 +10,36 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <span class="brand-mark" id="brandMark" data-state="idle" aria-hidden="true"></span>
+        <span class="brand-mark" id="brandMark" data-state="idle" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none">
+            <defs>
+              <linearGradient id="dsLogoBowl" x1="17" y1="8" x2="35" y2="32" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#8b6cf6" />
+                <stop offset="0.46" stop-color="#3b82f6" />
+                <stop offset="1" stop-color="#22d3ee" />
+              </linearGradient>
+              <linearGradient id="dsLogoStem" x1="13" y1="5" x2="16" y2="35" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#d7e3f7" />
+                <stop offset="0.55" stop-color="#93bbfb" />
+                <stop offset="1" stop-color="#4f8df7" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M18.6 8.2h5.2c7.1 0 10.8 5.2 10.8 11.8s-3.7 11.8-10.8 11.8h-5.2"
+              stroke="url(#dsLogoBowl)"
+              stroke-width="6.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M17.4 4.6c-4.8 7.2-6.6 13.6-6.2 19.8.4 4.8 2.6 8.6 6.2 10.4-2.5-3.4-3.5-6.8-3-11 .5-4.4 2.5-12 3-19.2Z"
+              fill="url(#dsLogoStem)"
+            />
+          </svg>
+        </span>
         <span class="brand-copy">
           <span class="brand-name">DevStart AI</span>
-          <span class="brand-sub">Repository intelligence</span>
+          <span class="brand-sub">Repository Intelligence</span>
         </span>
       </div>
       <div class="topbar-actions">
@@ -161,7 +187,7 @@
           </div>
         </div>
 
-        <div class="dash-card">
+        <div class="dash-card process-card">
           <div class="dash-card-head">
             <span>AI process</span>
             <span id="dashStage">Map · step 1 of 5</span>
@@ -296,10 +322,18 @@
 
     <nav class="bottom-nav" aria-label="DevStart AI navigation">
       <button class="bottom-nav-btn is-active" id="bottomDashboardBtn" type="button" aria-pressed="true">
-        <span aria-hidden="true">▦</span><span>Dashboard</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="6" height="7" rx="1" /><rect x="14" y="4" width="6" height="4" rx="1" />
+          <rect x="14" y="12" width="6" height="8" rx="1" /><rect x="4" y="15" width="6" height="5" rx="1" />
+        </svg>
+        <span>Dashboard</span>
       </button>
       <button class="bottom-nav-btn" id="bottomPrBtn" type="button" aria-pressed="false">
-        <span aria-hidden="true">⑂</span><span>Auto Pull Request</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><path d="M6 8.5v7" />
+          <circle cx="18" cy="18" r="2.5" /><path d="M18 15.5V9a3 3 0 0 0-3-3h-2" /><path d="m15 3-2 3 2 3" />
+        </svg>
+        <span>Auto Pull Request</span>
       </button>
     </nav>
   </div>

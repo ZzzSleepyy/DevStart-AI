@@ -161,21 +161,8 @@
     launcher.setAttribute("aria-label", "Open DevStart AI repository assistant");
     launcher.innerHTML =
       BRAND_MARK_SVG +
-      '<span>DevStart AI</span><span class="devstart-analysis-label">Analysis</span>' +
-      '<span class="devstart-analysis-chevron" aria-hidden="true">⌃</span>';
+      '<span>DevStart AI</span><span class="devstart-analysis-label">Analysis</span>';
     launcher.addEventListener("click", () => {
-      if (prContainer && !prContainer.hidden && pullRequestCard && pullRequestCard.childElementCount) {
-        prExpanded = !prExpanded;
-        pullRequestCard.hidden = !prExpanded;
-        launcher.setAttribute("aria-expanded", String(prExpanded));
-        launcher.setAttribute(
-          "aria-label",
-          prExpanded ? "Collapse vulnerability analysis" : "Expand vulnerability analysis"
-        );
-        const chevron = launcher.querySelector(".devstart-analysis-chevron");
-        if (chevron) chevron.textContent = prExpanded ? "⌄" : "⌃";
-        return;
-      }
       openPanel();
     });
 
@@ -186,7 +173,10 @@
     frame = document.createElement("iframe");
     frame.title = "DevStart AI repository assistant";
     frame.setAttribute("allow", "microphone; clipboard-write");
-    frame.addEventListener("load", sendContext);
+    frame.addEventListener("load", () => {
+      sendContext();
+      sendShowChat();
+    });
 
     shell.appendChild(frame);
     pullRequestCard = document.createElement("section");
@@ -302,10 +292,9 @@
     prToggle.setAttribute("aria-label", "Show vulnerability issues");
     launcher.innerHTML =
       `${BRAND_MARK_SVG}` +
-      `<span>DevStart AI</span><span class="devstart-analysis-label">Analysis</span>` +
-      `<span class="devstart-analysis-chevron" aria-hidden="true">⌃</span>`;
-    launcher.setAttribute("aria-expanded", "false");
-    launcher.setAttribute("aria-label", "Expand vulnerability analysis");
+      `<span>DevStart AI</span><span class="devstart-analysis-label">Analysis</span>`;
+    launcher.removeAttribute("aria-expanded");
+    launcher.setAttribute("aria-label", "Open DevStart AI repository assistant");
     summary.textContent = `Scanned: ${total} vulnerability issue${total === 1 ? "" : "s"}`;
     const severityGrid = document.createElement("div");
     severityGrid.className = "devstart-vulnerability-grid";
@@ -462,6 +451,7 @@
     }
 
     setTimeout(sendContext, 120);
+    setTimeout(sendShowChat, 180);
   }
 
   function closePanel() {
@@ -493,6 +483,14 @@
     if (!repo) return;
     frame.contentWindow.postMessage(
       { source: "devstart-content", type: "REPO_CONTEXT", repo },
+      "*"
+    );
+  }
+
+  function sendShowChat() {
+    if (!frame || !frame.contentWindow) return;
+    frame.contentWindow.postMessage(
+      { source: "devstart-content", type: "SHOW_CHAT" },
       "*"
     );
   }

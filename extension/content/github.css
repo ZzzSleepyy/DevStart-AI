@@ -207,12 +207,6 @@
   font-weight: 700;
 }
 
-.devstart-analysis-chevron {
-  color: #9fb2d4;
-  font-size: 15px;
-  line-height: 1;
-}
-
 .devstart-launcher[hidden] {
   display: none;
 }

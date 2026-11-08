@@ -265,6 +265,8 @@ if (state.embedded) {
     if (data.type === "REPO_CONTEXT" && data.repo) {
       setRepoContext(data.repo);
       restoreCachedRepoContext(data.repo);
+    } else if (data.type === "SHOW_CHAT") {
+      setView("chat");
     }
   });
 }
@@ -1656,7 +1658,7 @@ async function init() {
   setMode(state.mode, { silent: true });
   renderEmpty();
   renderDashboard();
-  setView("dashboard");
+  setView(state.embedded ? "chat" : "dashboard");
   syncSend();
   autoResize();
   await checkBackend();

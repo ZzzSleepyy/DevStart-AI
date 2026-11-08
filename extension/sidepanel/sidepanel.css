@@ -181,17 +181,43 @@ body::after {
 }
 
 .brand-mark {
+  position: relative;
   display: block;
   width: 34px;
   height: 34px;
   flex: none;
   filter: drop-shadow(0 4px 14px rgba(70, 120, 255, 0.55));
+  animation: mark-idle 5.2s ease-in-out infinite;
+  will-change: transform;
 }
 
 .brand-mark svg {
   display: block;
   width: 100%;
   height: 100%;
+  animation: mark-sheen 6.4s ease-in-out infinite;
+}
+
+@keyframes mark-idle {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: drop-shadow(0 4px 12px rgba(70, 120, 255, 0.5));
+  }
+  50% {
+    transform: translateY(-1px) scale(1.04);
+    filter: drop-shadow(0 6px 20px rgba(80, 170, 255, 0.82));
+  }
+}
+
+@keyframes mark-sheen {
+  0%,
+  100% {
+    filter: hue-rotate(0deg) saturate(1);
+  }
+  50% {
+    filter: hue-rotate(-16deg) saturate(1.22) brightness(1.08);
+  }
 }
 
 .brand-mark[data-state="thinking"],
@@ -547,6 +573,61 @@ body::after {
   }
   100% {
     transform: scale(1);
+  }
+}
+
+/* While an inspection is running, the active stage keeps breathing and the
+   progress line keeps flowing, so the rail reads as live work. */
+.stages.is-running .stage-step.is-active .stage-icon {
+  animation: stage-running-node 2.4s ease-in-out infinite;
+}
+
+.stages.is-running .stage-step.is-active .stage-icon::before {
+  animation: stage-running-halo 2.4s ease-in-out infinite;
+}
+
+.stages.is-running .stage-progress {
+  background: linear-gradient(90deg, var(--purple), var(--blue) 45%, var(--cyan) 68%, var(--purple));
+  background-size: 220% 100%;
+  animation: stage-running-flow 1.8s linear infinite;
+}
+
+@keyframes stage-running-node {
+  0%,
+  100% {
+    transform: scale(1.14);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      0 0 0 5px rgba(139, 92, 246, 0.16),
+      0 8px 26px rgba(124, 77, 255, 0.55);
+  }
+  50% {
+    transform: scale(1.19);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      0 0 0 8px rgba(139, 92, 246, 0.24),
+      0 10px 34px rgba(124, 77, 255, 0.8);
+  }
+}
+
+@keyframes stage-running-halo {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes stage-running-flow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
   }
 }
 

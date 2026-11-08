@@ -151,6 +151,7 @@ const state = {
     status: "idle",
     repoName: "",
     phase: "understand",
+    hasScanned: false,
     vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0 },
     prDraft: null,
     recommendations: []
@@ -424,6 +425,11 @@ function showScanCompleteToast() {
 function renderAnalysis() {
   const isRunning = state.analysis.status === "running";
   const isComplete = state.analysis.status === "complete";
+  const hasRunBefore = isComplete || state.analysis.hasScanned;
+  if (els.runAnalysisBtn) {
+    els.runAnalysisBtn.textContent = hasRunBefore ? "Run analysis again" : "Run analysis";
+  }
+  if (els.stageRail) els.stageRail.classList.toggle("is-running", isRunning);
   const counts = state.analysis.vulnerabilities || { critical: 0, high: 0, medium: 0, low: 0 };
   const cCrit = Number(counts.critical) || 0;
   const cHigh = Number(counts.high) || 0;
@@ -517,6 +523,7 @@ async function requestAnalysis() {
 
   hideScanCompleteToast();
   setPrBusy(true);
+  postToParent("ANALYSIS_STARTED");
 
   if (!state.usingBackend) {
     await checkBackend();
@@ -583,12 +590,14 @@ async function requestAnalysis() {
           ]
   };
   state.analysis.prDraft = prDraft;
+  state.analysis.hasScanned = true;
   renderProgress();
   setPrBusy(false);
   if (state.view === "pr") setView("pr");
   showScanCompleteToast();
   storageSet(`prDraft:${state.repo.fullName}`, prDraft);
   storageSet(`scanComplete:${state.repo.fullName}`, true);
+  postToParent("ANALYSIS_FINISHED");
   postToParent("PR_DRAFT_READY", prDraft);
 }
 
@@ -709,12 +718,22 @@ async function enrichRepoFromApi(fullName) {
 function resetAnalysisForRepo() {
   state.analysis.status = "idle";
   state.analysis.phase = "understand";
+  state.analysis.hasScanned = false;
   state.analysis.vulnerabilities = { critical: 0, high: 0, medium: 0, low: 0 };
   state.analysis.prDraft = null;
   state.analysis.recommendations = [];
   hideScanCompleteToast();
   renderProgress();
   renderAnalysis();
+
+  // Remember whether this repository has been scanned in an earlier session.
+  const repoName = state.repo.fullName;
+  if (!repoName) return;
+  storageGet(`scanComplete:${repoName}`, false).then((done) => {
+    if (state.repo.fullName !== repoName) return;
+    state.analysis.hasScanned = !!done;
+    renderAnalysis();
+  });
 }
 
 function setPrBusy(isBusy) {

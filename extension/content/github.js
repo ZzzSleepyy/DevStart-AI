@@ -66,6 +66,7 @@
   let pullRequestCard = null;
   let prContainer = null;
   let scanCompleteNotice = null;
+  let scanOverlay = null;
   let prToggle = null;
   let prExpanded = false;
   let lastRepoKey = "";
@@ -196,6 +197,12 @@
       if (scanCompleteNotice && !scanCompleteNotice.hidden) scheduleNoticeHide();
     });
 
+    scanOverlay = document.createElement("div");
+    scanOverlay.className = "devstart-scan-overlay";
+    scanOverlay.hidden = true;
+    scanOverlay.setAttribute("aria-hidden", "true");
+    scanOverlay.innerHTML = '<span class="devstart-scan-line"></span>';
+
     prToggle = document.createElement("button");
     prToggle.type = "button";
     prToggle.className = "devstart-pr-toggle";
@@ -217,7 +224,7 @@
     });
 
     prContainer.append(prToggle, pullRequestCard);
-    host.append(scanCompleteNotice, prContainer, launcher, shell);
+    host.append(scanOverlay, scanCompleteNotice, prContainer, launcher, shell);
     (document.body || document.documentElement).appendChild(host);
     mountPrToggle();
     mounted = true;
@@ -242,6 +249,11 @@
     if (prContainer.parentElement !== host) {
       host.appendChild(prContainer);
     }
+  }
+
+  function setAnalyzing(active) {
+    if (!scanOverlay) return;
+    scanOverlay.hidden = !active;
   }
 
   function retryHeaderMount(repo) {
@@ -515,6 +527,7 @@
     pullRequestCard = null;
     prContainer = null;
     scanCompleteNotice = null;
+    scanOverlay = null;
     prToggle = null;
     prExpanded = false;
     mounted = false;
@@ -545,6 +558,7 @@
       }
       if (pullRequestCard) pullRequestCard.innerHTML = "";
       if (prContainer) prContainer.hidden = true;
+      setAnalyzing(false);
       sendContext();
     }
     restoreCompletedScan(repo.fullName);
@@ -563,6 +577,10 @@
       closePanel();
     } else if (data.type === "PR_DRAFT_READY") {
       showPullRequest(data);
+    } else if (data.type === "ANALYSIS_STARTED") {
+      setAnalyzing(true);
+    } else if (data.type === "ANALYSIS_FINISHED") {
+      setAnalyzing(false);
     } else if (data.type === "PANEL_READY") {
       sendContext();
     }

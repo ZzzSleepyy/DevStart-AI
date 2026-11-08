@@ -7,6 +7,25 @@
 (() => {
   const HOST_ID = "devstart-host";
   const AUTO_OPEN_KEY = "devstart-auto-opened";
+  const BRAND_MARK_SVG =
+    '<svg class="devstart-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true">' +
+    '<defs>' +
+    '<linearGradient id="dsBrandBowl" x1="15" y1="5" x2="34" y2="35" gradientUnits="userSpaceOnUse">' +
+    '<stop stop-color="#8b6cf6"/>' +
+    '<stop offset="0.45" stop-color="#3b82f6"/>' +
+    '<stop offset="1" stop-color="#22d3ee"/>' +
+    "</linearGradient>" +
+    '<linearGradient id="dsBrandStem" x1="10" y1="3" x2="15" y2="38" gradientUnits="userSpaceOnUse">' +
+    '<stop stop-color="#e2ebf9"/>' +
+    '<stop offset="0.5" stop-color="#9cc2ff"/>' +
+    '<stop offset="1" stop-color="#4f8df7"/>' +
+    "</linearGradient>" +
+    "</defs>" +
+    '<path fill-rule="evenodd" clip-rule="evenodd" fill="url(#dsBrandBowl)" ' +
+    'd="M17.2 2.5C12.4 9.2 9.2 16 9 22.5c-.2 6.5 2.2 11.9 7.2 15.1 5.8.2 11.4-2.4 14.6-7.1 2.8-4 3.8-7.5 3.8-10.7 0-6.2-3.6-11.8-9.6-14.6-2.6-1.2-5.2-1.8-7.8-2.7ZM14 9.5c3.8.7 7.4 1.3 10.2 2.2 4 1.4 5.6 4.5 5.6 8.3s-1.6 6.9-5.6 8.3c-2.8.9-6.4 1.5-10.2 2.2-1.4-1.5-2-3.7-2-5.8v-9c0-2.3.6-4.5 2-6.2Z"/>' +
+    '<path fill="url(#dsBrandStem)" ' +
+    'd="M17.2 2.5C12.4 9.2 9.2 16 9 22.5c-.2 6.5 2.2 11.9 7.2 15.1-2.5-3.8-3.3-7.6-2.8-12 .5-5.4 2-15.6 3.8-23.1Z"/>' +
+    "</svg>";
   const RESERVED_ROOTS = new Set([
     "settings",
     "notifications",
@@ -141,7 +160,7 @@
     launcher.className = "devstart-launcher";
     launcher.setAttribute("aria-label", "Open DevStart AI repository assistant");
     launcher.innerHTML =
-      '<span class="devstart-mark" aria-hidden="true"></span>' +
+      BRAND_MARK_SVG +
       '<span>DevStart AI</span><span class="devstart-analysis-label">Analysis</span>' +
       '<span class="devstart-analysis-chevron" aria-hidden="true">⌃</span>';
     launcher.addEventListener("click", () => {
@@ -282,7 +301,7 @@
     prToggle.setAttribute("aria-expanded", "false");
     prToggle.setAttribute("aria-label", "Show vulnerability issues");
     launcher.innerHTML =
-      `<span class="devstart-mark" aria-hidden="true"></span>` +
+      `${BRAND_MARK_SVG}` +
       `<span>DevStart AI</span><span class="devstart-analysis-label">Analysis</span>` +
       `<span class="devstart-analysis-chevron" aria-hidden="true">⌃</span>`;
     launcher.setAttribute("aria-expanded", "false");

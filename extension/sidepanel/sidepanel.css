@@ -48,11 +48,15 @@ body {
   margin: 0;
   overflow: hidden;
   position: relative;
+  /* Deep-space base with layered nebula blooms: violet top-left,
+     electric blue right, cyan core, indigo rising from the bottom. */
   background:
-    radial-gradient(60% 38% at 6% 0%, rgba(98, 72, 230, 0.34), transparent 62%),
-    radial-gradient(70% 34% at 100% 64%, rgba(30, 120, 230, 0.26), transparent 66%),
-    radial-gradient(80% 42% at 40% 112%, rgba(20, 64, 180, 0.36), transparent 70%),
-    linear-gradient(180deg, #071026 0%, #050a18 55%, #040813 100%);
+    radial-gradient(58% 38% at 0% 0%, rgba(104, 70, 236, 0.46), transparent 60%),
+    radial-gradient(46% 32% at 104% 16%, rgba(44, 122, 255, 0.34), transparent 64%),
+    radial-gradient(52% 36% at 94% 86%, rgba(34, 92, 226, 0.26), transparent 68%),
+    radial-gradient(76% 46% at 24% 112%, rgba(22, 64, 190, 0.44), transparent 70%),
+    radial-gradient(34% 24% at 60% 46%, rgba(34, 211, 238, 0.13), transparent 70%),
+    linear-gradient(180deg, #071026 0%, #050a18 54%, #03060f 100%);
   background-attachment: fixed;
   color: var(--text);
   font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
@@ -61,17 +65,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* A slow diagonal light streak behind the glass layers */
+/* Drifting aurora + nebula haze behind the glass layers */
 body::before {
   content: "";
   position: fixed;
-  inset: -24%;
+  inset: -26%;
   z-index: 0;
   background:
-    linear-gradient(118deg, transparent 38%, rgba(56, 140, 255, 0.1) 48%, rgba(34, 211, 238, 0.07) 54%, transparent 64%),
-    radial-gradient(36% 26% at 80% 30%, rgba(34, 211, 238, 0.1), transparent 68%);
-  filter: blur(14px);
-  animation: ambient-light-drift 28s ease-in-out infinite alternate;
+    linear-gradient(118deg, transparent 34%, rgba(64, 146, 255, 0.15) 46%, rgba(34, 211, 238, 0.1) 53%, transparent 66%),
+    radial-gradient(40% 30% at 78% 26%, rgba(34, 211, 238, 0.16), transparent 66%),
+    radial-gradient(34% 26% at 14% 72%, rgba(139, 92, 246, 0.18), transparent 68%),
+    radial-gradient(26% 20% at 52% 8%, rgba(88, 128, 255, 0.14), transparent 70%);
+  filter: blur(20px);
+  animation: ambient-light-drift 26s ease-in-out infinite alternate;
   will-change: transform;
   pointer-events: none;
 }
@@ -79,11 +85,44 @@ body::before {
 @keyframes ambient-light-drift {
   0% {
     transform: translate3d(-3%, -2%, 0) scale(0.98);
-    opacity: 0.7;
+    opacity: 0.72;
   }
   100% {
-    transform: translate3d(3%, 3%, 0) scale(1.06);
+    transform: translate3d(3%, 3%, 0) scale(1.07);
     opacity: 1;
+  }
+}
+
+/* Faint tiled star field so the glass has something to refract */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    radial-gradient(1.2px 1.2px at 18px 24px, rgba(255, 255, 255, 0.9) 50%, transparent 51%),
+    radial-gradient(1px 1px at 96px 132px, rgba(198, 224, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(1.4px 1.4px at 168px 58px, rgba(255, 255, 255, 0.75) 50%, transparent 51%),
+    radial-gradient(1px 1px at 224px 186px, rgba(170, 210, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(0.9px 0.9px at 46px 198px, rgba(255, 255, 255, 0.6) 50%, transparent 51%),
+    radial-gradient(1.1px 1.1px at 142px 244px, rgba(210, 232, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(0.9px 0.9px at 256px 106px, rgba(255, 255, 255, 0.55) 50%, transparent 51%),
+    radial-gradient(1.3px 1.3px at 82px 16px, rgba(186, 216, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(1px 1px at 204px 22px, rgba(255, 255, 255, 0.5) 50%, transparent 51%),
+    radial-gradient(0.8px 0.8px at 128px 208px, rgba(176, 208, 255, 0.55) 50%, transparent 51%);
+  background-size: 280px 280px;
+  background-repeat: repeat;
+  opacity: 0.5;
+  animation: star-twinkle 13s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes star-twinkle {
+  0% {
+    opacity: 0.34;
+  }
+  100% {
+    opacity: 0.62;
   }
 }
 

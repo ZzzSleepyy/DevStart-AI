@@ -400,9 +400,23 @@ function getProcessMode() {
   return analysisIsActive ? state.analysis.phase : state.mode;
 }
 
+let scanToastTimer = null;
+
+function hideScanCompleteToast() {
+  if (scanToastTimer) {
+    clearTimeout(scanToastTimer);
+    scanToastTimer = null;
+  }
+  if (els.scanCompleteToast) els.scanCompleteToast.hidden = true;
+}
+
 function showScanCompleteToast() {
   if (!els.scanCompleteToast) return;
   els.scanCompleteToast.hidden = false;
+
+  // Never leave the confirmation pinned to the screen.
+  if (scanToastTimer) clearTimeout(scanToastTimer);
+  scanToastTimer = setTimeout(hideScanCompleteToast, 5000);
 }
 
 function renderAnalysis() {
@@ -499,6 +513,9 @@ function extractAiInsightsFromHistory() {
 async function requestAnalysis() {
   if (state.busy || !state.repo.fullName) return;
 
+  hideScanCompleteToast();
+  setPrBusy(true);
+
   if (!state.usingBackend) {
     await checkBackend();
   }
@@ -565,6 +582,8 @@ async function requestAnalysis() {
   };
   state.analysis.prDraft = prDraft;
   renderProgress();
+  setPrBusy(false);
+  if (state.view === "pr") setView("pr");
   showScanCompleteToast();
   storageSet(`prDraft:${state.repo.fullName}`, prDraft);
   storageSet(`scanComplete:${state.repo.fullName}`, true);
@@ -673,6 +692,26 @@ async function enrichRepoFromApi(fullName) {
   }
 }
 
+function resetAnalysisForRepo() {
+  state.analysis.status = "idle";
+  state.analysis.phase = "understand";
+  state.analysis.vulnerabilities = { critical: 0, high: 0, medium: 0, low: 0 };
+  state.analysis.prDraft = null;
+  state.analysis.recommendations = [];
+  hideScanCompleteToast();
+  renderProgress();
+}
+
+function setPrBusy(isBusy) {
+  if (els.prStatus) {
+    els.prStatus.textContent = isBusy ? "Analyzing repository…" : "Ready for review";
+  }
+  if (els.approvePrBtn) {
+    els.approvePrBtn.disabled = isBusy;
+    els.approvePrBtn.textContent = isBusy ? "Analysis in progress…" : "Approve pull request";
+  }
+}
+
 function setRepoContext(repo = {}) {
   const sameRepo = !repo.fullName || !state.repo.fullName || repo.fullName === state.repo.fullName;
   const nextRepo = { ...state.repo };
@@ -688,7 +727,9 @@ function setRepoContext(repo = {}) {
 
   if (state.repo.fullName && state.analysis.repoName !== state.repo.fullName) {
     state.analysis.repoName = state.repo.fullName;
-    requestAnalysis();
+    // Do not start the scan on detection. The user asks for it from the
+    // Auto Pull Request page or the dashboard button.
+    resetAnalysisForRepo();
   }
 
   const missingStats = ["stars", "forks", "issues"].some((key) =>
@@ -1548,7 +1589,11 @@ els.dashNewChatBtn?.addEventListener("click", () => {
 });
 
 els.bottomDashboardBtn?.addEventListener("click", () => setView("dashboard"));
-els.bottomPrBtn?.addEventListener("click", () => setView("pr"));
+els.bottomPrBtn?.addEventListener("click", () => {
+  setView("pr");
+  // The scan starts only after the user opens Auto Pull Request.
+  if (state.analysis.status === "idle") requestAnalysis();
+});
 els.cancelPrBtn?.addEventListener("click", () => {
   if (els.prStatus) els.prStatus.textContent = "Cancelled";
 });
@@ -1571,9 +1616,7 @@ els.settingsDialog.addEventListener("click", (event) => {
   if (event.target === els.settingsDialog) closeSettings();
 });
 
-els.dismissScanToast?.addEventListener("click", () => {
-  if (els.scanCompleteToast) els.scanCompleteToast.hidden = true;
-});
+els.dismissScanToast?.addEventListener("click", hideScanCompleteToast);
 
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {

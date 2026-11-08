@@ -100,6 +100,21 @@
   }
 }
 
+.devstart-scan-notice.is-leaving {
+  animation: devstart-notice-out 180ms ease both;
+}
+
+@keyframes devstart-notice-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.97);
+  }
+}
+
 .devstart-scan-notice[hidden] {
   display: none;
 }

@@ -53,6 +53,7 @@
   let mounted = false;
   let closeTimer = null;
   let mountObserver = null;
+  let noticeTimer = null;
 
   function readRepo() {
     const meta = document.querySelector('meta[name="octolytics-dimension-repository_nwo"]');
@@ -181,6 +182,10 @@
     scanCompleteNotice.className = "devstart-scan-notice";
     scanCompleteNotice.hidden = true;
     scanCompleteNotice.setAttribute("role", "status");
+    scanCompleteNotice.addEventListener("mouseenter", clearNoticeTimer);
+    scanCompleteNotice.addEventListener("mouseleave", () => {
+      if (scanCompleteNotice && !scanCompleteNotice.hidden) scheduleNoticeHide();
+    });
 
     prToggle = document.createElement("button");
     prToggle.type = "button";
@@ -242,8 +247,9 @@
     });
   }
 
-  function showPullRequest(data) {
+  function showPullRequest(data, options = {}) {
     if (!pullRequestCard) return;
+    const { notify = true } = options;
     mountPrToggle();
     prContainer.hidden = false;
     prExpanded = false;
@@ -333,7 +339,36 @@
     mountPullRequestCard();
     mountPrToggle();
 
-    showScanCompleteNotice(data.repo);
+    if (notify) showScanCompleteNotice(data.repo);
+  }
+
+  function clearNoticeTimer() {
+    if (noticeTimer) {
+      clearTimeout(noticeTimer);
+      noticeTimer = null;
+    }
+  }
+
+  function hideScanCompleteNotice() {
+    if (!scanCompleteNotice) return;
+    clearNoticeTimer();
+    scanCompleteNotice.hidden = true;
+    scanCompleteNotice.classList.remove("is-leaving");
+  }
+
+  function scheduleNoticeHide() {
+    clearNoticeTimer();
+    noticeTimer = setTimeout(() => {
+      if (!scanCompleteNotice || scanCompleteNotice.hidden) return;
+      scanCompleteNotice.classList.add("is-leaving");
+      noticeTimer = setTimeout(() => {
+        if (scanCompleteNotice) {
+          scanCompleteNotice.hidden = true;
+          scanCompleteNotice.classList.remove("is-leaving");
+        }
+        noticeTimer = null;
+      }, 180);
+    }, 7000);
   }
 
   function showScanCompleteNotice(repo) {
@@ -348,8 +383,13 @@
     link.href = `/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls`;
     link.textContent = "Go to Pull Request";
     link.setAttribute("aria-label", "Go to Pull Requests");
+    link.addEventListener("click", hideScanCompleteNotice);
     scanCompleteNotice.append(copy, link);
     scanCompleteNotice.hidden = false;
+    scanCompleteNotice.classList.remove("is-leaving");
+
+    // Auto-dismiss, but give the user time to read and click through.
+    scheduleNoticeHide();
   }
 
   function restoreStoredPrDraft(repo) {
@@ -359,7 +399,8 @@
       if (chrome.runtime && chrome.runtime.lastError) return;
       const draft = result && result[key];
       const currentRepo = readRepo();
-      if (draft && currentRepo && currentRepo.fullName === repo) showPullRequest(draft);
+      if (draft && currentRepo && currentRepo.fullName === repo)
+        showPullRequest(draft, { notify: false });
     });
   }
 
@@ -371,7 +412,8 @@
       const currentRepo = readRepo();
       if (!currentRepo || currentRepo.fullName !== repo) return;
       const draft = result && result[`prDraft:${repo}`];
-      if (result && result[`scanComplete:${repo}`] && draft) showPullRequest(draft);
+      if (result && result[`scanComplete:${repo}`] && draft)
+        showPullRequest(draft, { notify: false });
     });
   }
 
@@ -446,6 +488,7 @@
   }
 
   function unmount() {
+    clearNoticeTimer();
     if (prContainer && prContainer.isConnected) prContainer.remove();
     if (host && host.isConnected) host.remove();
     host = null;
@@ -478,6 +521,7 @@
     if (repo.fullName !== lastRepoKey) {
       lastRepoKey = repo.fullName;
       prExpanded = false;
+      hideScanCompleteNotice();
       if (prToggle) {
         prToggle.textContent = "Vulnerability issues ▼";
         prToggle.setAttribute("aria-expanded", "false");

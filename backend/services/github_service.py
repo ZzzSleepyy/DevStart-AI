@@ -185,6 +185,41 @@ def get_file_content(
     return None
 
 
+def get_raw_file(
+    owner: str,
+    repo: str,
+    path: str,
+    ref: Optional[str] = None,
+    token: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Fetch a file's exact content (no redaction) so approved edits can be
+    committed without overwriting real values with redaction placeholders.
+    Never send this content to an external model; use get_file_content for that.
+    """
+    if is_sensitive_path(path):
+        return None
+    url = f"{settings.GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path.lstrip('/')}"
+    params = {"ref": ref} if ref else {}
+    try:
+        resp = requests.get(
+            url, headers=_headers(token), params=params, timeout=settings.GITHUB_TIMEOUT
+        )
+        if not resp.ok:
+            return None
+        data = resp.json()
+        if isinstance(data, list) or data.get("type") != "file":
+            return None
+        if data.get("size", 0) > settings.MAX_FILE_SIZE_BYTES:
+            return None
+        encoded = data.get("content", "")
+        if data.get("encoding") == "base64" and encoded:
+            return base64.b64decode(encoded).decode("utf-8")
+    except Exception as exc:
+        logger.debug("Could not fetch raw file %s/%s/%s: %s", owner, repo, path, exc)
+    return None
+
+
 def select_batch_files(tree: List[Dict[str, Any]], max_files: int) -> List[str]:
     """Select a prioritized, manageable batch of source files for analysis."""
     blobs = [

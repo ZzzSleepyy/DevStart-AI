@@ -69,12 +69,6 @@
       </div>
     </header>
 
-    <aside class="scan-complete-toast" id="scanCompleteToast" role="status" hidden>
-      <span class="scan-complete-dot" aria-hidden="true"></span>
-      <span>Automated PR is complete. Please check.</span>
-      <button class="scan-complete-close" id="dismissScanToast" type="button" aria-label="Dismiss notification">×</button>
-    </aside>
-
     <div class="content">
       <section class="stages-wrap" aria-label="AI process — read only">
         <div class="stages" id="stageRail" role="list" aria-label="AI process stages">
@@ -148,14 +142,6 @@
             <p>Overview of this repo and the assistant's progress.</p>
           </div>
           <button class="ghost-btn back-btn" id="backToChatBtn" type="button">Back to chat</button>
-        </div>
-
-        <div class="pr-ready-widget" id="prReadyWidget" hidden role="status">
-          <span class="pr-ready-icon" aria-hidden="true">✓</span>
-          <span class="pr-ready-copy">
-            <strong>Automated PR is complete</strong>
-            <span>Please check the Pull Requests page on GitHub.</span>
-          </span>
         </div>
 
         <div class="dash-repo-card">
@@ -291,10 +277,15 @@
               <li><span class="file-change file-deleted">Deleted</span><code>legacy/config.js</code></li>
             </ul>
           </div>
+          <div class="auto-pr-section" id="inlinePrTokenField" hidden>
+            <strong>GitHub Token (required for write access to this repository)</strong>
+            <input id="inlinePrTokenInput" class="pr-token-input" type="password" placeholder="Paste ghp_... or github_pat_... token" autocomplete="off" spellcheck="false" />
+          </div>
           <div class="auto-pr-actions">
             <button class="ghost-btn" id="cancelPrBtn" type="button">Cancel</button>
             <button class="primary-btn" id="approvePrBtn" type="button">Approve pull request</button>
           </div>
+          <p class="pr-result" id="prResult" role="status" hidden></p>
         </article>
       </section>
     </div>
@@ -355,6 +346,10 @@
       <label class="field">
         <span>Backend URL</span>
         <input id="apiInput" type="url" placeholder="http://127.0.0.1:8000" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>GitHub token (for opening pull requests)</span>
+        <input id="githubTokenInput" type="password" placeholder="Optional if GITHUB_TOKEN is set on the backend" autocomplete="off" spellcheck="false" />
       </label>
       <div class="sheet-row">
         <span class="sheet-row-copy">

@@ -5,6 +5,15 @@
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("DevStart AI installed");
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(null, (all) => {
+      if (!all) return;
+      const legacyKeys = Object.keys(all).filter(
+        (key) => key.startsWith("prDraft:") || key.startsWith("scanComplete:")
+      );
+      if (legacyKeys.length) chrome.storage.local.remove(legacyKeys);
+    });
+  }
 });
 
 chrome.action.onClicked.addListener(async (tab) => {

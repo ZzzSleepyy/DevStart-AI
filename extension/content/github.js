@@ -63,17 +63,11 @@
   let launcher = null;
   let shell = null;
   let frame = null;
-  let pullRequestCard = null;
-  let prContainer = null;
-  let scanCompleteNotice = null;
   let scanOverlay = null;
-  let prToggle = null;
-  let prExpanded = false;
   let lastRepoKey = "";
   let mounted = false;
   let closeTimer = null;
   let mountObserver = null;
-  let noticeTimer = null;
 
   function readRepo() {
     const meta = document.querySelector('meta[name="octolytics-dimension-repository_nwo"]');
@@ -135,10 +129,10 @@
 
   function readBranch() {
     const selectors = [
+      "#branch-picker-repos-header-ref-selector span",
       ".ref-selector-button-text",
       'button[data-hotkey="w"] .Text-sc-17v1xeu-0',
-      'button[data-hotkey="w"] span',
-      '[data-testid="anchor-button"] span'
+      'button[data-hotkey="w"] span'
     ];
 
     for (const selector of selectors) {
@@ -148,8 +142,23 @@
     return "main";
   }
 
+  function removeLegacyWidgets() {
+    document
+      .querySelectorAll(
+        ".devstart-pr-container, .devstart-pr-card, .devstart-pr-toggle, .devstart-scan-notice, [data-devstart-pr-widget]"
+      )
+      .forEach((el) => el.remove());
+
+    document.querySelectorAll(`#${HOST_ID}`).forEach((el) => {
+      if (host && el !== host) el.remove();
+    });
+  }
+
   function ensureUI() {
+    removeLegacyWidgets();
     if (mounted && host && host.isConnected) return;
+
+    document.querySelectorAll(`#${HOST_ID}`).forEach((el) => el.remove());
 
     host = document.createElement("div");
     host.id = HOST_ID;
@@ -180,22 +189,6 @@
     });
 
     shell.appendChild(frame);
-    pullRequestCard = document.createElement("section");
-    pullRequestCard.className = "devstart-pr-card";
-    pullRequestCard.dataset.devstartPrWidget = "true";
-    pullRequestCard.setAttribute("aria-labelledby", "devstart-pr-title");
-    prContainer = document.createElement("span");
-    prContainer.className = "devstart-pr-container";
-    prContainer.hidden = true;
-
-    scanCompleteNotice = document.createElement("aside");
-    scanCompleteNotice.className = "devstart-scan-notice";
-    scanCompleteNotice.hidden = true;
-    scanCompleteNotice.setAttribute("role", "status");
-    scanCompleteNotice.addEventListener("mouseenter", clearNoticeTimer);
-    scanCompleteNotice.addEventListener("mouseleave", () => {
-      if (scanCompleteNotice && !scanCompleteNotice.hidden) scheduleNoticeHide();
-    });
 
     scanOverlay = document.createElement("div");
     scanOverlay.className = "devstart-scan-overlay";
@@ -203,238 +196,22 @@
     scanOverlay.setAttribute("aria-hidden", "true");
     scanOverlay.innerHTML = '<span class="devstart-scan-line"></span>';
 
-    prToggle = document.createElement("button");
-    prToggle.type = "button";
-    prToggle.className = "devstart-pr-toggle";
-    prToggle.textContent = "Vulnerability issues";
-    prToggle.setAttribute("aria-expanded", "false");
-    prToggle.setAttribute("aria-label", "Show automated pull request");
-    prToggle.addEventListener("click", () => {
-      prExpanded = !prExpanded;
-      prToggle.setAttribute("aria-expanded", String(prExpanded));
-      const total = prToggle.dataset.total || "0";
-      prToggle.textContent = prExpanded
-        ? `Hide vulnerability issues ${total} ▲`
-        : `Vulnerability issues ${total} ▼`;
-      prToggle.setAttribute(
-        "aria-label",
-        prExpanded ? "Hide vulnerability issues" : "Show vulnerability issues"
-      );
-      if (pullRequestCard) pullRequestCard.hidden = !prExpanded;
-    });
-
-    prContainer.append(prToggle, pullRequestCard);
-    host.append(scanOverlay, scanCompleteNotice, prContainer, launcher, shell);
+    host.append(scanOverlay, launcher, shell);
     (document.body || document.documentElement).appendChild(host);
-    mountPrToggle();
     mounted = true;
     mountObserver = new MutationObserver(() => {
+      removeLegacyWidgets();
       if (!host || !host.isConnected) {
         mounted = false;
         ensureUI();
-      } else {
-        mountPrToggle();
       }
     });
     mountObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
 
-  function mountPullRequestCard() {
-    if (!pullRequestCard) return;
-    pullRequestCard.hidden = !prExpanded;
-  }
-
-  function mountPrToggle() {
-    if (!prToggle || !host) return;
-    if (prContainer.parentElement !== host) {
-      host.appendChild(prContainer);
-    }
-  }
-
   function setAnalyzing(active) {
     if (!scanOverlay) return;
     scanOverlay.hidden = !active;
-  }
-
-  function retryHeaderMount(repo) {
-    [100, 500, 1200, 2500].forEach((delay) => {
-      setTimeout(() => {
-        const currentRepo = readRepo();
-        if (currentRepo && currentRepo.fullName === repo) {
-          mountPrToggle();
-          restoreCompletedScan(repo);
-        }
-      }, delay);
-    });
-  }
-
-  function showPullRequest(data, options = {}) {
-    if (!pullRequestCard) return;
-    const { notify = true } = options;
-    mountPrToggle();
-    prContainer.hidden = false;
-    prExpanded = false;
-    pullRequestCard.innerHTML = "";
-
-    const header = document.createElement("div");
-    header.className = "devstart-pr-head";
-    const heading = document.createElement("div");
-    const kicker = document.createElement("span");
-    kicker.className = "devstart-pr-kicker";
-    kicker.textContent = "DevStart AI · Repository scan";
-    const title = document.createElement("h2");
-    title.id = "devstart-pr-title";
-    title.textContent = "Vulnerability issues";
-    heading.append(kicker, title);
-    const badge = document.createElement("span");
-    badge.className = "devstart-pr-badge";
-    badge.textContent = "Scanned";
-    header.append(heading, badge);
-
-    const summary = document.createElement("p");
-    summary.className = "devstart-pr-summary";
-    const counts = data.vulnerabilities || {};
-    const total = ["critical", "high", "medium", "low"].reduce(
-      (sum, key) => sum + (Number.isFinite(counts[key]) ? counts[key] : 0),
-      0
-    );
-    prToggle.textContent = `Vulnerability issues ${total}`;
-    prToggle.dataset.total = String(total);
-    prToggle.setAttribute("aria-expanded", "false");
-    prToggle.setAttribute("aria-label", "Show vulnerability issues");
-    launcher.innerHTML =
-      `${BRAND_MARK_SVG}` +
-      `<span>DevStart AI</span><span class="devstart-analysis-label">Analysis</span>`;
-    launcher.removeAttribute("aria-expanded");
-    launcher.setAttribute("aria-label", "Open DevStart AI repository assistant");
-    summary.textContent = `Scanned: ${total} vulnerability issue${total === 1 ? "" : "s"}`;
-    const severityGrid = document.createElement("div");
-    severityGrid.className = "devstart-vulnerability-grid";
-    [
-      ["Critical", counts.critical],
-      ["High", counts.high],
-      ["Medium", counts.medium],
-      ["Low", counts.low]
-    ].forEach(([label, value]) => {
-      const item = document.createElement("div");
-      item.className = `devstart-vulnerability-item severity-${label.toLowerCase()}`;
-      const valueText = document.createElement("strong");
-      valueText.textContent = String(Number.isFinite(value) ? value : 0);
-      const labelText = document.createElement("span");
-      labelText.textContent = label;
-      item.append(valueText, labelText);
-      severityGrid.appendChild(item);
-    });
-
-    const detailsToggle = document.createElement("button");
-    detailsToggle.type = "button";
-    detailsToggle.className = "devstart-pr-expand";
-    detailsToggle.textContent = "Expand scan details +";
-    detailsToggle.setAttribute("aria-expanded", "false");
-
-    const details = document.createElement("div");
-    details.className = "devstart-pr-details";
-    details.hidden = true;
-    detailsToggle.addEventListener("click", () => {
-      details.hidden = !details.hidden;
-      detailsToggle.textContent = details.hidden ? "Expand scan details +" : "Hide scan details −";
-      detailsToggle.setAttribute("aria-expanded", String(!details.hidden));
-    });
-    [
-      ["Why this change", data.why],
-      ["Proposed scope", data.scope]
-    ].forEach(([label, value]) => {
-      const item = document.createElement("div");
-      const itemLabel = document.createElement("span");
-      itemLabel.className = "devstart-pr-label";
-      itemLabel.textContent = label;
-      const itemText = document.createElement("p");
-      itemText.textContent = value || "";
-      item.append(itemLabel, itemText);
-      details.appendChild(item);
-    });
-
-    pullRequestCard.append(header, summary, severityGrid, detailsToggle, details);
-    pullRequestCard.hidden = !prExpanded;
-    mountPullRequestCard();
-    mountPrToggle();
-
-    if (notify) showScanCompleteNotice(data.repo);
-  }
-
-  function clearNoticeTimer() {
-    if (noticeTimer) {
-      clearTimeout(noticeTimer);
-      noticeTimer = null;
-    }
-  }
-
-  function hideScanCompleteNotice() {
-    if (!scanCompleteNotice) return;
-    clearNoticeTimer();
-    scanCompleteNotice.hidden = true;
-    scanCompleteNotice.classList.remove("is-leaving");
-  }
-
-  function scheduleNoticeHide() {
-    clearNoticeTimer();
-    noticeTimer = setTimeout(() => {
-      if (!scanCompleteNotice || scanCompleteNotice.hidden) return;
-      scanCompleteNotice.classList.add("is-leaving");
-      noticeTimer = setTimeout(() => {
-        if (scanCompleteNotice) {
-          scanCompleteNotice.hidden = true;
-          scanCompleteNotice.classList.remove("is-leaving");
-        }
-        noticeTimer = null;
-      }, 180);
-    }, 7000);
-  }
-
-  function showScanCompleteNotice(repo) {
-    if (!scanCompleteNotice || !repo) return;
-    const [owner, name] = repo.split("/");
-    if (!owner || !name) return;
-
-    scanCompleteNotice.innerHTML = "";
-    const copy = document.createElement("span");
-    copy.textContent = "Automated PR is complete. Please check.";
-    const link = document.createElement("a");
-    link.href = `/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls`;
-    link.textContent = "Go to Pull Request";
-    link.setAttribute("aria-label", "Go to Pull Requests");
-    link.addEventListener("click", hideScanCompleteNotice);
-    scanCompleteNotice.append(copy, link);
-    scanCompleteNotice.hidden = false;
-    scanCompleteNotice.classList.remove("is-leaving");
-
-    // Auto-dismiss, but give the user time to read and click through.
-    scheduleNoticeHide();
-  }
-
-  function restoreStoredPrDraft(repo) {
-    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local || !repo) return;
-    const key = `prDraft:${repo}`;
-    chrome.storage.local.get([key], (result) => {
-      if (chrome.runtime && chrome.runtime.lastError) return;
-      const draft = result && result[key];
-      const currentRepo = readRepo();
-      if (draft && currentRepo && currentRepo.fullName === repo)
-        showPullRequest(draft, { notify: false });
-    });
-  }
-
-  function restoreCompletedScan(repo) {
-    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local || !repo) return;
-    const keys = [`prDraft:${repo}`, `scanComplete:${repo}`];
-    chrome.storage.local.get(keys, (result) => {
-      if (chrome.runtime && chrome.runtime.lastError) return;
-      const currentRepo = readRepo();
-      if (!currentRepo || currentRepo.fullName !== repo) return;
-      const draft = result && result[`prDraft:${repo}`];
-      if (result && result[`scanComplete:${repo}`] && draft)
-        showPullRequest(draft, { notify: false });
-    });
   }
 
   function openPanel() {
@@ -517,19 +294,12 @@
   }
 
   function unmount() {
-    clearNoticeTimer();
-    if (prContainer && prContainer.isConnected) prContainer.remove();
     if (host && host.isConnected) host.remove();
     host = null;
     launcher = null;
     shell = null;
     frame = null;
-    pullRequestCard = null;
-    prContainer = null;
-    scanCompleteNotice = null;
     scanOverlay = null;
-    prToggle = null;
-    prExpanded = false;
     mounted = false;
     lastRepoKey = "";
     if (closeTimer) clearTimeout(closeTimer);
@@ -550,19 +320,9 @@
 
     if (repo.fullName !== lastRepoKey) {
       lastRepoKey = repo.fullName;
-      prExpanded = false;
-      hideScanCompleteNotice();
-      if (prToggle) {
-        prToggle.textContent = "Vulnerability issues ▼";
-        prToggle.setAttribute("aria-expanded", "false");
-      }
-      if (pullRequestCard) pullRequestCard.innerHTML = "";
-      if (prContainer) prContainer.hidden = true;
       setAnalyzing(false);
       sendContext();
     }
-    restoreCompletedScan(repo.fullName);
-    retryHeaderMount(repo.fullName);
 
     maybeAutoOpen();
   }
@@ -575,8 +335,6 @@
 
     if (data.type === "CLOSE" || data.type === "MINIMIZE") {
       closePanel();
-    } else if (data.type === "PR_DRAFT_READY") {
-      showPullRequest(data);
     } else if (data.type === "ANALYSIS_STARTED") {
       setAnalyzing(true);
     } else if (data.type === "ANALYSIS_FINISHED") {
@@ -585,19 +343,6 @@
       sendContext();
     }
   });
-
-  if (chrome.storage && chrome.storage.onChanged) {
-    chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName !== "local") return;
-      const repo = readRepo();
-      if (!repo) return;
-      const change = changes[`prDraft:${repo.fullName}`];
-      if (change && change.newValue) showPullRequest(change.newValue);
-      if (changes[`scanComplete:${repo.fullName}`] && changes[`scanComplete:${repo.fullName}`].newValue) {
-        restoreCompletedScan(repo.fullName);
-      }
-    });
-  }
 
   // Toolbar action toggles the on-page assistant when it is available
   if (chrome.runtime && chrome.runtime.onMessage) {

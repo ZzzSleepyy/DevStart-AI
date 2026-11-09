@@ -17,6 +17,8 @@
 
 const API_BASE_DEFAULT = "https://devstart-ai.onrender.com";
 const REQUEST_TIMEOUT = 35000;
+// Opening a PR generates fixes per file and makes several GitHub API calls.
+const PR_REQUEST_TIMEOUT = 180000;
 
 const MODES = {
   understand: {
@@ -154,8 +156,13 @@ const state = {
     hasScanned: false,
     vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0 },
     prDraft: null,
-    recommendations: []
+    recommendations: [],
+    repoFiles: {},
+    defaultBranch: "",
+    pullRequest: null
   },
+  githubToken: "",
+  creatingPr: false,
   repo: {
     fullName: "",
     owner: "",
@@ -209,7 +216,9 @@ const els = {
   dashIssues: $("dashIssues"),
   dashStage: $("dashStage"),
   dashFill: $("dashFill"),
-  prReadyWidget: $("prReadyWidget"),
+  inlinePrTokenField: $("inlinePrTokenField"),
+  inlinePrTokenInput: $("inlinePrTokenInput"),
+  prResult: $("prResult"),
   dashAnalysisStatus: $("dashAnalysisStatus"),
   analysisRing: $("analysisRing"),
   analysisProgress: $("analysisProgress"),
@@ -233,11 +242,10 @@ const els = {
   settingsBtn: $("settingsBtn"),
   minimizeBtn: $("minimizeBtn"),
   closeBtn: $("closeBtn"),
-  scanCompleteToast: $("scanCompleteToast"),
-  dismissScanToast: $("dismissScanToast"),
   settingsDialog: $("settingsDialog"),
   settingsForm: $("settingsForm"),
   apiInput: $("apiInput"),
+  githubTokenInput: $("githubTokenInput"),
   testBtn: $("testBtn"),
   testResult: $("testResult"),
   closeSettings: $("closeSettings"),
@@ -306,6 +314,22 @@ function storageSet(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
     /* storage unavailable — ignore */
+  }
+}
+
+function purgeLegacyStorageKeys() {
+  try {
+    if (hasChromeStorage) {
+      chrome.storage.local.get(null, (all) => {
+        if (!all) return;
+        const legacy = Object.keys(all).filter(
+          (k) => k.startsWith("prDraft:") || k.startsWith("scanComplete:")
+        );
+        if (legacy.length) chrome.storage.local.remove(legacy);
+      });
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -393,9 +417,6 @@ function renderProgress() {
   els.dashFill.style.width = `${((index + 1) / MODE_ORDER.length) * 100}%`;
   renderDashStageList(index);
   renderAnalysis();
-  if (els.prReadyWidget) {
-    els.prReadyWidget.hidden = !(state.analysis.phase === "pr" && state.analysis.status === "complete");
-  }
 }
 
 function getProcessMode() {
@@ -404,25 +425,6 @@ function getProcessMode() {
     state.analysis.status !== "idle" &&
     MODES[state.analysis.phase];
   return analysisIsActive ? state.analysis.phase : state.mode;
-}
-
-let scanToastTimer = null;
-
-function hideScanCompleteToast() {
-  if (scanToastTimer) {
-    clearTimeout(scanToastTimer);
-    scanToastTimer = null;
-  }
-  if (els.scanCompleteToast) els.scanCompleteToast.hidden = true;
-}
-
-function showScanCompleteToast() {
-  if (!els.scanCompleteToast) return;
-  els.scanCompleteToast.hidden = false;
-
-  // Never leave the confirmation pinned to the screen.
-  if (scanToastTimer) clearTimeout(scanToastTimer);
-  scanToastTimer = setTimeout(hideScanCompleteToast, 5000);
 }
 
 function renderAnalysis() {
@@ -519,7 +521,11 @@ function extractAiInsightsFromHistory() {
   let match;
   while ((match = fileRegex.exec(fullText)) !== null) {
     const candidate = match[1];
-    if (!mentionedFiles.includes(candidate) && !candidate.startsWith("http")) {
+    if (
+      candidate !== "message_snippet.py" &&
+      !mentionedFiles.includes(candidate) &&
+      !candidate.startsWith("http")
+    ) {
       mentionedFiles.push(candidate);
     }
   }
@@ -537,11 +543,111 @@ function extractAiInsightsFromHistory() {
   };
 }
 
+const ANALYZABLE_FILE_RE =
+  /\.(py|js|ts|jsx|tsx|ino|pde|c|cpp|h|hpp|java|go|rs|rb|php|cs|swift|kt|scala|lua|sh|html|css|md)$/i;
+
+async function fetchCodeAnalysisForRepo(repoFullName) {
+  if (!repoFullName || !repoFullName.includes("/")) return;
+  const [owner, name] = repoFullName.split("/");
+  const headers = { Accept: "application/json", "Content-Type": "application/json" };
+  if (state.githubToken) headers["X-GitHub-Token"] = state.githubToken;
+
+  try {
+    const repoRes = await fetchWithTimeout(
+      `${state.apiBase}/github/repo/${encodeURIComponent(owner)}/${encodeURIComponent(name)}?include_context=true&max_files=8`,
+      { headers },
+      REQUEST_TIMEOUT
+    );
+    if (!repoRes.ok) return;
+    const repoData = await repoRes.json();
+    const branch =
+      repoData.branch ||
+      (repoData.metadata && repoData.metadata.default_branch) ||
+      state.repo.branch ||
+      "main";
+    state.analysis.defaultBranch = branch;
+
+    const filesMap = { ...(repoData.source_files || {}) };
+    const tree = Array.isArray(repoData.file_tree) ? repoData.file_tree : [];
+    const extraPaths = tree
+      .filter((p) => p && !filesMap[p] && ANALYZABLE_FILE_RE.test(p))
+      .slice(0, Math.max(0, 6 - Object.keys(filesMap).length));
+
+    await Promise.all(
+      extraPaths.map(async (path) => {
+        try {
+          const fRes = await fetchWithTimeout(
+            `${state.apiBase}/github/repo/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}&ref=${encodeURIComponent(branch)}`,
+            { headers },
+            15000
+          );
+          if (!fRes.ok) return;
+          const fData = await fRes.json();
+          if (typeof fData.content === "string" && fData.content.length) {
+            filesMap[path] = fData.content;
+          }
+        } catch {
+          /* skip unreadable file */
+        }
+      })
+    );
+
+    if (!Object.keys(filesMap).length && repoData.docs) {
+      Object.assign(filesMap, repoData.docs);
+    }
+
+    state.analysis.repoFiles = { ...filesMap };
+    if (!Object.keys(filesMap).length) return;
+
+    const analyzeRes = await fetchWithTimeout(
+      `${state.apiBase}/analyze/code`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          repo: repoFullName,
+          files: filesMap
+        })
+      },
+      REQUEST_TIMEOUT
+    );
+    if (!analyzeRes.ok) return;
+    const analyzeData = await analyzeRes.json();
+
+    const validRecs = (Array.isArray(analyzeData.recommendations) ? analyzeData.recommendations : []).filter(
+      (r) => r && r.file && r.file !== "message_snippet.py"
+    );
+    if (validRecs.length) {
+      state.analysis.recommendations = validRecs;
+    }
+    if (analyzeData.vulnerabilities && typeof analyzeData.vulnerabilities === "object") {
+      state.analysis.vulnerabilities = {
+        critical: Number(analyzeData.vulnerabilities.critical) || 0,
+        high: Number(analyzeData.vulnerabilities.high) || 0,
+        medium: Number(analyzeData.vulnerabilities.medium) || 0,
+        low: Number(analyzeData.vulnerabilities.low) || 0
+      };
+    }
+    if (analyzeData.pr_draft && typeof analyzeData.pr_draft === "object") {
+      state.analysis.prDraft = {
+        ...analyzeData.pr_draft,
+        files: validRecs.length
+          ? Array.from(new Set(validRecs.map((r) => r.file)))
+          : Object.keys(filesMap)
+      };
+    }
+  } catch {
+    /* non-fatal: chat analysis still populates fallback state */
+  }
+}
+
 async function requestAnalysis() {
   if (state.busy || !state.repo.fullName) return;
 
-  hideScanCompleteToast();
+  purgeLegacyStorageKeys();
   setPrBusy(true);
+  state.analysis.recommendations = [];
+  state.analysis.repoFiles = {};
   postToParent("ANALYSIS_STARTED");
 
   if (!state.usingBackend) {
@@ -567,6 +673,10 @@ async function requestAnalysis() {
     `Generate automatic insights from the ${state.repo.fullName} inspection. Prioritize the most important fixes, explain why they matter, and suggest concrete next steps tied to the findings.`
   );
 
+  if (state.usingBackend) {
+    await fetchCodeAnalysisForRepo(state.repo.fullName);
+  }
+
   state.analysis.phase = "pr";
   state.analysis.status = "complete";
   const vulns = state.analysis.vulnerabilities || {
@@ -577,47 +687,61 @@ async function requestAnalysis() {
   };
   const backendDraft = state.analysis.prDraft || {};
   const aiInsights = extractAiInsightsFromHistory();
-  const hasRealBackendChanges =
-    Array.isArray(backendDraft.changes) &&
-    backendDraft.changes.length &&
-    !(
-      backendDraft.changes.length === 1 &&
-      backendDraft.changes[0] === "Repository inspection findings were reviewed automatically"
-    );
+  const recFiles = (state.analysis.recommendations || [])
+    .map((r) => r && r.file)
+    .filter((f) => f && f !== "message_snippet.py");
+  const draftFiles = Array.isArray(backendDraft.files)
+    ? backendDraft.files.filter((f) => f && f !== "message_snippet.py")
+    : [];
+  const mergedFiles = Array.from(new Set([...recFiles, ...draftFiles, ...aiInsights.files]));
+
+  const cleanBackendChanges = Array.isArray(backendDraft.changes)
+    ? backendDraft.changes.filter(
+        (c) =>
+          c &&
+          !String(c).includes("message_snippet.py") &&
+          c !== "Repository inspection findings were reviewed automatically"
+      )
+    : [];
 
   const prDraft = {
     repo: state.repo.fullName,
     title: backendDraft.title || `Harden ${state.repo.fullName}`,
     summary:
-      backendDraft.summary ||
-      `Automatic inspection found improvement opportunities in ${state.repo.fullName}.`,
+      backendDraft.summary && !String(backendDraft.summary).includes("message_snippet.py")
+        ? backendDraft.summary
+        : `Automatic inspection found improvement opportunities in ${state.repo.fullName}.`,
     why:
       backendDraft.why ||
       "Groups the highest-priority findings into one reviewable change before they reach production.",
     scope:
-      backendDraft.scope ||
-      "Security fixes, validation improvements, and targeted refactors.",
+      backendDraft.scope && !String(backendDraft.scope).includes("message_snippet.py")
+        ? backendDraft.scope
+        : mergedFiles.length
+          ? `Targeted fixes across ${mergedFiles.slice(0, 4).join(", ")}.`
+          : "Security fixes, validation improvements, and targeted refactors.",
     vulnerabilities: vulns,
-    files: aiInsights.files,
-    changes: hasRealBackendChanges
-      ? backendDraft.changes
-      : aiInsights.changes.length
-        ? aiInsights.changes
-        : [
-            `Inspected ${state.repo.fullName} source files for security and validation issues`,
-            "Grouped highest-priority findings into a single reviewable pull request"
-          ]
+    recommendations: state.analysis.recommendations || [],
+    files: mergedFiles,
+    changes: cleanBackendChanges.length
+      ? cleanBackendChanges
+      : (state.analysis.recommendations || []).length
+        ? state.analysis.recommendations.slice(0, 5).map((r) => `${r.title} in ${r.file}`)
+        : aiInsights.changes.length
+          ? aiInsights.changes
+          : [
+              `Inspected ${state.repo.fullName} source files for security and validation issues`,
+              "Grouped highest-priority findings into a single reviewable pull request"
+            ]
   };
   state.analysis.prDraft = prDraft;
   state.analysis.hasScanned = true;
   renderProgress();
   setPrBusy(false);
   if (state.view === "pr") setView("pr");
-  showScanCompleteToast();
-  storageSet(`prDraft:${state.repo.fullName}`, prDraft);
-  storageSet(`scanComplete:${state.repo.fullName}`, true);
+  storageSet(`analysisDraft:${state.repo.fullName}`, prDraft);
+  storageSet(`analysisDone:${state.repo.fullName}`, true);
   postToParent("ANALYSIS_FINISHED");
-  postToParent("PR_DRAFT_READY", prDraft);
 
   // Keep the follow-up action in view instead of leaving it below the fold.
   if (state.view === "dashboard" && els.reviewFindingsBtn && els.dashboardPage) {
@@ -755,20 +879,29 @@ async function enrichRepoFromApi(fullName) {
 }
 
 function resetAnalysisForRepo() {
+  purgeLegacyStorageKeys();
   state.analysis.status = "idle";
   state.analysis.phase = "understand";
   state.analysis.hasScanned = false;
   state.analysis.vulnerabilities = { critical: 0, high: 0, medium: 0, low: 0 };
   state.analysis.prDraft = null;
   state.analysis.recommendations = [];
-  hideScanCompleteToast();
+  state.analysis.repoFiles = {};
+  state.analysis.defaultBranch = "";
+  state.analysis.pullRequest = null;
+  if (els.inlinePrTokenField) els.inlinePrTokenField.hidden = true;
+  showPrResult("");
   renderProgress();
   renderAnalysis();
 
   // Remember whether this repository has been scanned in an earlier session.
   const repoName = state.repo.fullName;
   if (!repoName) return;
-  storageGet(`scanComplete:${repoName}`, false).then((done) => {
+  storageGet(`pullRequest:${repoName}`, null).then((pr) => {
+    if (state.repo.fullName !== repoName || !pr || !pr.html_url) return;
+    state.analysis.pullRequest = pr;
+  });
+  storageGet(`analysisDone:${repoName}`, false).then((done) => {
     if (state.repo.fullName !== repoName) return;
     state.analysis.hasScanned = !!done;
     if (!done) {
@@ -778,7 +911,7 @@ function resetAnalysisForRepo() {
 
     // Restore the last result so the score and follow-up action stay coherent
     // with the "Run analysis again" label after a reload.
-    storageGet(`prDraft:${repoName}`, null).then((draft) => {
+    storageGet(`analysisDraft:${repoName}`, null).then((draft) => {
       if (state.repo.fullName !== repoName || !draft) {
         renderAnalysis();
         return;
@@ -786,6 +919,11 @@ function resetAnalysisForRepo() {
       state.analysis.status = "complete";
       state.analysis.phase = "pr";
       state.analysis.prDraft = draft;
+      if (Array.isArray(draft.recommendations)) {
+        state.analysis.recommendations = draft.recommendations.filter(
+          (r) => r && r.file && r.file !== "message_snippet.py"
+        );
+      }
       if (draft.vulnerabilities) {
         state.analysis.vulnerabilities = draft.vulnerabilities;
       }
@@ -801,6 +939,238 @@ function setPrBusy(isBusy) {
   if (els.approvePrBtn) {
     els.approvePrBtn.disabled = isBusy;
     els.approvePrBtn.textContent = isBusy ? "Analysis in progress…" : "Approve pull request";
+  }
+  if (isBusy) showPrResult("");
+}
+
+function showPrResult(message, { error = false, link = null } = {}) {
+  if (!els.prResult) return;
+  els.prResult.textContent = "";
+  els.prResult.classList.toggle("is-error", error);
+  els.prResult.hidden = !message;
+  if (!message) return;
+  els.prResult.append(document.createTextNode(message));
+  if (link) {
+    const anchor = document.createElement("a");
+    anchor.href = link.href;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.textContent = link.label;
+    els.prResult.append(" ", anchor);
+  }
+}
+
+function applyRecommendationEdit(content, rec) {
+  if (!content || !rec) return null;
+  const original = String(rec.original_code || "");
+  const suggested = String(rec.suggested_code || "");
+  if (
+    !suggested ||
+    original === suggested ||
+    /\[REDACTED_[A-Z_]+\]/.test(original) ||
+    /\[REDACTED_[A-Z_]+\]/.test(suggested) ||
+    /^\s*#\s*Recommended fix:/m.test(suggested)
+  ) {
+    return null;
+  }
+
+  const useCrlf = content.includes("\r\n");
+  const normContent = content.replace(/\r\n/g, "\n");
+  const normOrig = original.replace(/\r\n/g, "\n").trim();
+  const normSug = suggested.replace(/\r\n/g, "\n");
+
+  if (normOrig && normContent.includes(normOrig)) {
+    const replaced = normContent.replace(normOrig, normSug);
+    return useCrlf ? replaced.replace(/\n/g, "\r\n") : replaced;
+  }
+
+  // Short placeholder file (e.g. "// Coming Soon")
+  if (normContent.trim().length <= 80 && normSug.trim().length > normContent.trim().length) {
+    const out = normSug.endsWith("\n") ? normSug : `${normSug}\n`;
+    return useCrlf ? out.replace(/\n/g, "\r\n") : out;
+  }
+
+  return null;
+}
+
+async function buildPrPayloadForRepo(repoFullName) {
+  const [owner, name] = repoFullName.split("/");
+  if (
+    !state.analysis.recommendations.length ||
+    !Object.keys(state.analysis.repoFiles || {}).length ||
+    state.analysis.recommendations.every((r) =>
+      /^\s*#\s*Recommended fix:/m.test(String(r.suggested_code || ""))
+    )
+  ) {
+    await fetchCodeAnalysisForRepo(repoFullName);
+  }
+
+  const headers = { Accept: "application/json" };
+  if (state.githubToken) headers["X-GitHub-Token"] = state.githubToken;
+  const branch = state.analysis.defaultBranch || state.repo.branch || "main";
+  const recs = (state.analysis.recommendations || []).filter(
+    (r) => r && r.file && r.file !== "message_snippet.py"
+  );
+
+  const byFile = new Map();
+  recs.forEach((r) => {
+    const path = String(r.file).replace(/^\/+/, "");
+    if (!byFile.has(path)) byFile.set(path, []);
+    byFile.get(path).push(r);
+  });
+
+  const changes = [];
+  const notes = [];
+
+  for (const [path, fileRecs] of byFile.entries()) {
+    let raw = state.analysis.repoFiles && state.analysis.repoFiles[path];
+    if (typeof raw !== "string") {
+      try {
+        const fRes = await fetchWithTimeout(
+          `${state.apiBase}/github/repo/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}&ref=${encodeURIComponent(branch)}`,
+          { headers },
+          15000
+        );
+        if (fRes.ok) {
+          const fData = await fRes.json();
+          raw = fData.content;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (typeof raw !== "string" || !raw.length) continue;
+
+    let updated = raw;
+    const reasons = [];
+    for (const rec of fileRecs) {
+      const next = applyRecommendationEdit(updated, rec);
+      if (next !== null && next !== updated) {
+        updated = next;
+        if (rec.title) reasons.push(rec.title);
+      }
+    }
+
+    if (updated !== raw) {
+      const reason = reasons[0] || "Apply DevStart AI code improvements";
+      changes.push({
+        path,
+        content: updated,
+        commit_message: `DevStart AI: ${reason} in ${path}`.slice(0, 120)
+      });
+      reasons.forEach((r) => notes.push(`- \`${path}\`: ${r}`));
+    }
+  }
+
+  return { owner, name, branch, changes, notes };
+}
+
+async function createPullRequest() {
+  const repo = state.repo.fullName;
+  if (!repo || !repo.includes("/") || state.creatingPr) return;
+
+  if (els.inlinePrTokenInput && els.inlinePrTokenInput.value.trim()) {
+    state.githubToken = els.inlinePrTokenInput.value.trim();
+    storageSet("githubToken", state.githubToken);
+    if (els.githubTokenInput) els.githubTokenInput.value = state.githubToken;
+  }
+
+  state.creatingPr = true;
+  if (els.prStatus) els.prStatus.textContent = "Creating pull request…";
+  if (els.approvePrBtn) {
+    els.approvePrBtn.disabled = true;
+    els.approvePrBtn.textContent = "Creating pull request…";
+  }
+  showPrResult("Generating fixes, committing them to a new branch, and opening the pull request…");
+
+  try {
+    const { owner, name, branch, changes, notes } = await buildPrPayloadForRepo(repo);
+    if (!changes.length) {
+      throw new Error(
+        "No applicable code modifications could be generated for this repository's files."
+      );
+    }
+
+    const draft = state.analysis.prDraft || {};
+    const title = draft.title || `DevStart AI: Improve ${repo}`;
+    const bodyLines = [
+      draft.summary || `Automated code improvements generated by DevStart AI for ${repo}.`,
+      "",
+      "### Changes",
+      ...(notes.length ? notes : changes.map((c) => `- Updated \`${c.path}\``)),
+      "",
+      "_Created via DevStart AI after developer review and approval._"
+    ];
+
+    const headers = { "Content-Type": "application/json" };
+    if (state.githubToken) headers["X-GitHub-Token"] = state.githubToken;
+
+    const res = await fetchWithTimeout(
+      `${state.apiBase}/github/pr`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          owner,
+          repo: name,
+          title,
+          body: bodyLines.join("\n"),
+          changes,
+          base_branch: branch || undefined,
+          approved: true,
+          github_token: state.githubToken || undefined
+        })
+      },
+      PR_REQUEST_TIMEOUT
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const rawDetail = typeof data.detail === "string" ? data.detail : `HTTP ${res.status}`;
+      if (
+        res.status === 401 ||
+        res.status === 403 ||
+        /Resource not accessible by personal access token|GITHUB_TOKEN|Failed to create branch|Bad credentials/i.test(
+          rawDetail
+        )
+      ) {
+        if (els.inlinePrTokenField) els.inlinePrTokenField.hidden = false;
+        if (els.inlinePrTokenInput) els.inlinePrTokenInput.focus();
+        throw new Error(
+          `A GitHub Personal Access Token with write access to ${repo} is required to create the branch and Pull Request. Paste your token above and click Try again.`
+        );
+      }
+      throw new Error(rawDetail);
+    }
+
+    if (els.inlinePrTokenField) els.inlinePrTokenField.hidden = true;
+    state.analysis.pullRequest = {
+      pr_number: data.pr_number,
+      html_url: data.html_url,
+      branch: data.branch
+    };
+    storageSet(`pullRequest:${repo}`, state.analysis.pullRequest);
+    if (els.prStatus) els.prStatus.textContent = "Pull request opened";
+    if (els.approvePrBtn) els.approvePrBtn.textContent = "Pull request opened";
+    const files = Array.isArray(data.committed_files) ? data.committed_files.length : changes.length;
+    showPrResult(
+      `Opened ${data.pr_number ? `Pull Request #${data.pr_number}` : "a pull request"} from branch ${data.branch} with ${files} changed file${files === 1 ? "" : "s"}.`,
+      data.html_url ? { link: { href: data.html_url, label: "View Pull Request on GitHub →" } } : {}
+    );
+  } catch (err) {
+    const message =
+      err && err.name === "AbortError"
+        ? "The backend took too long to respond. Please try again."
+        : err && err.message && !/Failed to fetch/i.test(err.message)
+          ? err.message
+          : "Couldn't reach the backend. Check the URL in settings and try again.";
+    if (els.prStatus) els.prStatus.textContent = "Pull request failed";
+    if (els.approvePrBtn) {
+      els.approvePrBtn.disabled = false;
+      els.approvePrBtn.textContent = "Try again";
+    }
+    showPrResult(message, { error: true });
+  } finally {
+    state.creatingPr = false;
   }
 }
 
@@ -960,8 +1330,12 @@ function setView(view) {
       });
     }
 
-    const recFiles = recs.map((r) => r.file).filter(Boolean);
-    const draftFiles = Array.isArray(draft.files) ? draft.files : [];
+    const recFiles = recs
+      .map((r) => r.file)
+      .filter((f) => f && f !== "message_snippet.py");
+    const draftFiles = Array.isArray(draft.files)
+      ? draft.files.filter((f) => f && f !== "message_snippet.py")
+      : [];
     const uniqueFiles = Array.from(
       new Set([...recFiles, ...draftFiles, ...aiInsights.files].filter(Boolean))
     );
@@ -1125,19 +1499,39 @@ async function callBackend(message) {
   const reply = data.reply ?? data.message ?? data.content ?? data.answer;
   if (!reply || typeof reply !== "string") throw new Error("Empty reply");
 
+  const rawRecs = Array.isArray(data.recommendations) ? data.recommendations : [];
+  const snippetRecs = rawRecs.filter((r) => r && r.file === "message_snippet.py");
+  const validRecs = rawRecs.filter((r) => r && r.file && r.file !== "message_snippet.py");
+
   if (data.vulnerabilities && typeof data.vulnerabilities === "object") {
+    const snippetPenalty = { critical: 0, high: 0, medium: 0, low: 0 };
+    snippetRecs.forEach((r) => {
+      const sev = String(r.severity || "").toLowerCase();
+      if (sev in snippetPenalty) snippetPenalty[sev] += 1;
+    });
     state.analysis.vulnerabilities = {
-      critical: Number(data.vulnerabilities.critical) || 0,
-      high: Number(data.vulnerabilities.high) || 0,
-      medium: Number(data.vulnerabilities.medium) || 0,
-      low: Number(data.vulnerabilities.low) || 0
+      critical: Math.max(0, (Number(data.vulnerabilities.critical) || 0) - snippetPenalty.critical),
+      high: Math.max(0, (Number(data.vulnerabilities.high) || 0) - snippetPenalty.high),
+      medium: Math.max(0, (Number(data.vulnerabilities.medium) || 0) - snippetPenalty.medium),
+      low: Math.max(0, (Number(data.vulnerabilities.low) || 0) - snippetPenalty.low)
     };
   }
   if (data.pr_draft && typeof data.pr_draft === "object") {
-    state.analysis.prDraft = data.pr_draft;
+    const draft = { ...data.pr_draft };
+    if (Array.isArray(draft.files)) {
+      draft.files = draft.files.filter((f) => f && f !== "message_snippet.py");
+    }
+    if (Array.isArray(draft.changes)) {
+      draft.changes = draft.changes.filter((c) => c && !String(c).includes("message_snippet.py"));
+    }
+    if (typeof draft.scope === "string") {
+      draft.scope = draft.scope.replace(/message_snippet\.py,?\s*/g, "").trim();
+    }
+    state.analysis.prDraft = draft;
   }
-  if (Array.isArray(data.recommendations)) {
-    state.analysis.recommendations = data.recommendations;
+  // Keep findings from the analysis turn even if a later turn returns none.
+  if (validRecs.length) {
+    state.analysis.recommendations = validRecs;
   }
   renderAnalysis();
 
@@ -1570,6 +1964,7 @@ if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage)
 
 function openSettings() {
   els.apiInput.value = state.apiBase;
+  if (els.githubTokenInput) els.githubTokenInput.value = state.githubToken;
   els.testResult.textContent = "";
   els.testResult.className = "test-result";
 
@@ -1619,6 +2014,10 @@ async function saveSettings(event) {
   event.preventDefault();
   state.apiBase = normalizeBase(els.apiInput.value);
   storageSet("apiBase", state.apiBase);
+  if (els.githubTokenInput) {
+    state.githubToken = els.githubTokenInput.value.trim();
+    storageSet("githubToken", state.githubToken);
+  }
   closeSettings();
   await checkBackend();
 }
@@ -1689,15 +2088,11 @@ els.bottomPrBtn?.addEventListener("click", () => {
   if (state.analysis.status === "idle") requestAnalysis();
 });
 els.cancelPrBtn?.addEventListener("click", () => {
+  if (state.creatingPr) return;
   if (els.prStatus) els.prStatus.textContent = "Cancelled";
+  showPrResult("");
 });
-els.approvePrBtn?.addEventListener("click", () => {
-  if (els.prStatus) els.prStatus.textContent = "Approved for review";
-  if (els.approvePrBtn) {
-    els.approvePrBtn.disabled = true;
-    els.approvePrBtn.textContent = "Pull request approved";
-  }
-});
+els.approvePrBtn?.addEventListener("click", createPullRequest);
 
 els.runAnalysisBtn?.addEventListener("click", requestAnalysis);
 
@@ -1734,8 +2129,6 @@ els.settingsDialog.addEventListener("click", (event) => {
   if (event.target === els.settingsDialog) closeSettings();
 });
 
-els.dismissScanToast?.addEventListener("click", hideScanCompleteToast);
-
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
@@ -1750,8 +2143,10 @@ document.addEventListener("keydown", (event) => {
 /* ---------- Init ---------- */
 
 async function init() {
+  purgeLegacyStorageKeys();
   const savedBase = await storageGet("apiBase", API_BASE_DEFAULT);
   const savedMode = await storageGet("mode", "understand");
+  state.githubToken = String(await storageGet("githubToken", "") || "");
 
   state.apiBase = normalizeBase(savedBase);
   state.mode = MODES[savedMode] ? savedMode : "understand";

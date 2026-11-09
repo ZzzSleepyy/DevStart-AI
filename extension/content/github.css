@@ -1,4 +1,4 @@
-/* DevStart AI — injected on GitHub repository pages.
+/* DevStart AI â€” injected on GitHub repository pages.
    All selectors are prefixed so GitHub's own styles are left alone. */
 
 #devstart-host {
@@ -13,45 +13,15 @@
   pointer-events: auto;
 }
 
-.devstart-pr-container[hidden] {
-  display: none;
-}
-
-.devstart-pr-toggle {
-  position: relative;
-  z-index: 1;
-  padding: 9px 13px;
-  border: 1px solid rgba(124, 172, 255, 0.3);
-  border-radius: 999px;
-  background: linear-gradient(150deg, rgba(22, 42, 80, 0.92), rgba(8, 18, 40, 0.95));
-  color: #dbe7ff;
-  font: 700 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  cursor: pointer;
-  white-space: nowrap;
-  backdrop-filter: blur(16px) saturate(160%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 22px rgba(1, 4, 16, 0.5);
-}
-
-.devstart-pr-toggle:hover,
-.devstart-pr-toggle[aria-expanded="true"] {
-  border-color: rgba(34, 211, 238, 0.55);
-  background: linear-gradient(150deg, rgba(32, 60, 112, 0.95), rgba(10, 24, 52, 0.96));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 10px 26px rgba(1, 4, 16, 0.54),
-    0 0 0 1px rgba(34, 211, 238, 0.14);
-}
-
-.devstart-pr-container {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: 2147483001;
-  display: block;
-}
-
-.devstart-pr-container > .devstart-pr-toggle {
-  display: none;
+.devstart-pr-container,
+.devstart-pr-card,
+.devstart-pr-toggle,
+.devstart-scan-notice,
+[data-devstart-pr-widget] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .devstart-analysis-badge {
@@ -63,84 +33,6 @@
   color: #7fe9fb;
   font-size: 10px;
   text-align: center;
-}
-
-.devstart-pr-container .devstart-pr-card {
-  right: 0;
-  bottom: calc(100% + 8px);
-  top: auto;
-  left: auto;
-}
-
-.devstart-scan-notice {
-  position: fixed;
-  top: 14px;
-  left: 50%;
-  z-index: 2147483001;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: calc(100vw - 28px);
-  padding: 10px 12px 10px 15px;
-  border: 1px solid rgba(34, 211, 238, 0.44);
-  border-radius: 999px;
-  background:
-    radial-gradient(120% 200% at 0% 0%, rgba(60, 120, 220, 0.22), transparent 60%),
-    linear-gradient(110deg, rgba(20, 44, 84, 0.96), rgba(9, 20, 42, 0.97));
-  color: #e8f4ff;
-  font-size: 13px;
-  font-weight: 650;
-  backdrop-filter: blur(18px) saturate(160%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 10px 28px rgba(1, 4, 16, 0.5),
-    0 0 26px rgba(34, 211, 238, 0.12);
-  transform: translateX(-50%);
-  animation: devstart-notice-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes devstart-notice-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -10px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-}
-
-.devstart-scan-notice.is-leaving {
-  animation: devstart-notice-out 180ms ease both;
-}
-
-@keyframes devstart-notice-out {
-  from {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translate(-50%, -8px) scale(0.97);
-  }
-}
-
-.devstart-scan-notice[hidden] {
-  display: none;
-}
-
-.devstart-scan-notice a {
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: linear-gradient(120deg, #22d3ee, #3b82f6);
-  color: #050b18;
-  font-size: 11px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.devstart-scan-notice a:hover {
-  background: linear-gradient(120deg, #5ee7f8, #60a5fa);
 }
 
 /* Repository scan animation: glowing frame + a line sweeping the page */
@@ -352,244 +244,7 @@
   background: #050a16;
 }
 
-.devstart-pr-card {
-  position: absolute;
-  z-index: 2147483001;
-  display: block;
-  box-sizing: border-box;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(560px, calc(100vh - 120px));
-  overflow: auto;
-  margin: 0;
-  padding: 16px;
-  border: 1px solid rgba(124, 172, 255, 0.28);
-  border-radius: 20px;
-  background:
-    radial-gradient(120% 80% at 100% 0%, rgba(64, 120, 255, 0.16), transparent 60%),
-    linear-gradient(155deg, rgba(22, 44, 84, 0.97), rgba(8, 17, 36, 0.98) 58%, rgba(12, 26, 54, 0.98));
-  color: #f2f6ff;
-  visibility: visible !important;
-  opacity: 1 !important;
-  backdrop-filter: blur(20px) saturate(150%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 24px 70px rgba(1, 4, 16, 0.6),
-    0 0 34px rgba(60, 120, 255, 0.12);
-  font-family: inherit;
-}
-
-.devstart-pr-inline {
-  margin: 0;
-}
-
-.devstart-pr-card[hidden] {
-  display: none;
-}
-
-.devstart-pr-head,
-.devstart-pr-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.devstart-pr-kicker,
-.devstart-pr-label {
-  display: block;
-  color: #9fb2d4;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.devstart-pr-head h2 {
-  margin: 4px 0 0;
-  color: #f7faff;
-  overflow: hidden;
-  font-size: 15px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.devstart-pr-badge {
-  padding: 5px 10px;
-  border: 1px solid rgba(34, 211, 238, 0.4);
-  border-radius: 999px;
-  background: rgba(34, 211, 238, 0.12);
-  color: #7fe9fb;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.devstart-pr-summary,
-.devstart-pr-details p {
-  margin: 10px 0 0;
-  color: #a9b6d3;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.devstart-vulnerability-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.devstart-vulnerability-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 6px;
-  border: 1px solid rgba(124, 172, 255, 0.18);
-  border-radius: 12px;
-  background: linear-gradient(160deg, rgba(32, 58, 108, 0.55), rgba(10, 22, 46, 0.68));
-  text-align: center;
-}
-
-.devstart-vulnerability-item strong {
-  color: #f7faff;
-  font-size: 19px;
-  line-height: 1;
-}
-
-.devstart-vulnerability-item span {
-  color: #a9b6d3;
-  font-size: 9px;
-  font-weight: 650;
-  text-transform: uppercase;
-}
-
-.devstart-vulnerability-item.severity-critical {
-  border-color: rgba(248, 113, 113, 0.45);
-  background: linear-gradient(160deg, rgba(120, 36, 54, 0.5), rgba(22, 16, 34, 0.72));
-}
-
-.devstart-vulnerability-item.severity-critical strong {
-  color: #ff9b9b;
-}
-
-.devstart-vulnerability-item.severity-high {
-  border-color: rgba(251, 146, 60, 0.42);
-  background: linear-gradient(160deg, rgba(112, 58, 22, 0.46), rgba(22, 16, 34, 0.72));
-}
-
-.devstart-vulnerability-item.severity-high strong {
-  color: #ffb877;
-}
-
-.devstart-vulnerability-item.severity-medium {
-  border-color: rgba(250, 204, 21, 0.36);
-  background: linear-gradient(160deg, rgba(104, 82, 16, 0.42), rgba(22, 16, 34, 0.72));
-}
-
-.devstart-vulnerability-item.severity-medium strong {
-  color: #ffe27a;
-}
-
-.devstart-vulnerability-item.severity-low {
-  border-color: rgba(96, 165, 250, 0.42);
-  background: linear-gradient(160deg, rgba(28, 62, 112, 0.5), rgba(10, 20, 42, 0.72));
-}
-
-.devstart-vulnerability-item.severity-low strong {
-  color: #8ec2ff;
-}
-
-.devstart-pr-section-title {
-  display: block;
-  margin-top: 14px;
-  color: #eef4ff;
-  font-size: 11px;
-}
-
-.devstart-pr-changes {
-  margin: 6px 0 11px;
-  padding-left: 18px;
-  color: #c2cfe4;
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.devstart-pr-changes li + li {
-  margin-top: 3px;
-}
-
-.devstart-pr-expand {
-  padding: 7px 10px;
-  border: 1px solid rgba(124, 172, 255, 0.28);
-  border-radius: 10px;
-  background: linear-gradient(150deg, rgba(32, 58, 108, 0.66), rgba(10, 22, 46, 0.74));
-  color: #d7e3ff;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.devstart-pr-expand:hover {
-  border-color: rgba(34, 211, 238, 0.5);
-  background: linear-gradient(150deg, rgba(42, 76, 138, 0.7), rgba(12, 28, 58, 0.78));
-}
-
-.devstart-pr-details {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.devstart-pr-details > div {
-  padding: 10px;
-  border: 1px solid rgba(124, 172, 255, 0.16);
-  border-radius: 12px;
-  background: linear-gradient(160deg, rgba(28, 52, 98, 0.42), rgba(9, 20, 42, 0.52));
-}
-
-.devstart-pr-details p {
-  margin-top: 5px;
-}
-
-.devstart-pr-actions {
-  justify-content: flex-start;
-  margin-top: 11px;
-}
-
-.devstart-pr-approve {
-  padding: 9px 13px;
-  border: 0;
-  border-radius: 10px;
-  background: linear-gradient(120deg, #0d8fc0, #2f6bf0 60%, #5160f3);
-  color: #f4f8ff;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(30, 90, 220, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.22);
-}
-
-.devstart-pr-approve:disabled {
-  cursor: default;
-  opacity: 0.72;
-}
-
-.devstart-pr-note {
-  color: #7f8eb0;
-  font-size: 10px;
-}
-
 @media (max-width: 680px) {
-  .devstart-pr-container {
-    right: 10px;
-    bottom: 10px;
-  }
-
-  .devstart-pr-card {
-    width: min(360px, calc(100vw - 16px));
-  }
-
   .devstart-shell {
     right: 8px;
     bottom: 8px;
@@ -602,16 +257,6 @@
   .devstart-launcher {
     right: 12px;
     bottom: 12px;
-  }
-
-  .devstart-scan-notice {
-    top: 8px;
-    max-width: calc(100vw - 16px);
-    font-size: 11px;
-  }
-
-  .devstart-pr-card {
-    width: calc(100vw - 16px);
   }
 }
 

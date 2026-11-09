@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from config.settings import settings
+from services.auto_pr_service import AutoPrError, create_automated_pull_request
 from services.github_service import (
     create_pull_request_workflow,
     fetch_repo_context,
@@ -129,6 +131,64 @@ def create_pull_request(
         return result
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+class AutoPullRequestPayload(BaseModel):
+    repo: str = Field(..., description="Repository as 'owner/repo'")
+    title: Optional[str] = Field(None, description="Pull Request title")
+    summary: Optional[str] = Field(None, description="Short description placed at the top of the PR body")
+    findings: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Scan findings/recommendations ({file, line, severity, title, explanation, ...})",
+    )
+    approved: bool = Field(False, description="Must be True after the developer approves the draft")
+    github_token: Optional[str] = Field(None, description="Optional user GitHub token overriding server env")
+
+
+@router.post("/auto-pr")
+def create_auto_pull_request(
+    payload: AutoPullRequestPayload,
+    x_github_token: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """
+    Generate fixes for scan findings, commit them to a new branch, and open a Pull Request.
+    Requires explicit developer approval (`approved=True`).
+    """
+    if "/" not in payload.repo:
+        raise HTTPException(status_code=400, detail="'repo' must be in 'owner/repo' form.")
+    owner, repo_name = payload.repo.split("/", 1)
+
+    if not payload.approved:
+        raise HTTPException(
+            status_code=400,
+            detail="Pull Request creation blocked: Developer must review and approve changes first (approved=True).",
+        )
+
+    token = (payload.github_token or x_github_token or settings.GITHUB_TOKEN or "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="A GitHub token is required to open Pull Requests. Add GITHUB_TOKEN to backend/.env or set one in the extension settings.",
+        )
+
+    try:
+        return create_automated_pull_request(
+            owner=owner,
+            repo=repo_name,
+            findings=payload.findings,
+            title=payload.title,
+            summary=payload.summary,
+            approved=True,
+            token=token,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except AutoPrError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

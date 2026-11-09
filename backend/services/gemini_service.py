@@ -59,7 +59,11 @@ def infer_mode(message: str, current_mode: str = "understand") -> str:
     return best_mode
 
 
-def _call_gemini(prompt: str, system_instruction: Optional[str] = None) -> Optional[str]:
+def _call_gemini(
+    prompt: str,
+    system_instruction: Optional[str] = None,
+    max_output_tokens: int = 1200,
+) -> Optional[str]:
     """Call Google Gemini API via REST with automatic model fallback and strict timeouts."""
     api_key = settings.GEMINI_API_KEY
     if not api_key or api_key == "your_gemini_api_key":
@@ -76,7 +80,7 @@ def _call_gemini(prompt: str, system_instruction: Optional[str] = None) -> Optio
 
     payload: Dict[str, Any] = {
         "contents": [{"role": "user", "parts": [{"text": safe_prompt}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1200},
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_output_tokens},
     }
     if system_instruction:
         payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}

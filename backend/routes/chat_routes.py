@@ -169,8 +169,9 @@ def chat_endpoint(
             owner, repo, token=x_github_token
         )
 
-    # Also scan inline code in the user's message if no repo findings exist yet
-    if not static_analysis or static_analysis.get("total_issues", 0) == 0:
+    # Scan inline code in the user's message only when no repository is in context;
+    # otherwise the prompt text would be reported as a repository file.
+    if not repo_tuple and (not static_analysis or static_analysis.get("total_issues", 0) == 0):
         inline_scan = run_static_analysis({"message_snippet.py": payload.message})
         if inline_scan.get("total_issues", 0) > 0:
             static_analysis = inline_scan
